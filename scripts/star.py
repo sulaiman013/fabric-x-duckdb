@@ -173,11 +173,12 @@ def build(con, src):
     union = "\n UNION ALL ".join(
         "SELECT _mirror_row_id, '%s' AS rule_id, %d AS weight FROM deduped WHERE %s"
         % (rid, w, name) for rid, name, _, w in RULES)
-    con.execute("""
-      CREATE OR REPLACE TABLE fact_alert AS
-      SELECT row_number() OVER (ORDER BY _mirror_row_id, rule_id) AS alert_key, *
-      FROM (%s)
-    """ % union)
+    # No surrogate key here. (_mirror_row_id, rule_id) is already unique by
+    # construction, and minting an ordered alert_key meant a global sort over
+    # ~48,000,000 rows, which exhausted 38 GiB of spill space and killed the
+    # build. A surrogate that costs a full sort and identifies nothing the
+    # natural key does not is not worth having.
+    con.execute("CREATE OR REPLACE TABLE fact_alert AS SELECT * FROM (%s)" % union)
 
 
 def main():
@@ -185,6 +186,7 @@ def main():
     p.add_argument("--limit", type=int, default=2000000)
     p.add_argument("--out", default="")
     p.add_argument("--memory-limit", default="10GB")
+    p.add_argument("--temp-dir", default="D:/duckdb-fabric-data/tmp")
     p.add_argument("--host", default="localhost")
     p.add_argument("--dbname", default="postgres")
     p.add_argument("--user", default="postgres")
@@ -193,6 +195,9 @@ def main():
     con = duckdb.connect()
     con.execute("SET memory_limit='%s'" % args.memory_limit)
     con.execute("SET preserve_insertion_order=false")
+    # Spill to D:. The default temp directory follows the database file, which
+    # here means C: with 43 GB free against D:'s 479 GB.
+    con.execute("SET temp_directory='%s'" % args.temp_dir)
     con.execute("INSTALL postgres"); con.execute("LOAD postgres")
     con.execute("ATTACH 'host=%s dbname=%s user=%s' AS pg (TYPE postgres, READ_ONLY)"
                 % (args.host, args.dbname, args.user))
