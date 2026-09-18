@@ -107,9 +107,8 @@ re-uploaded, nothing is re-modelled, and the 29-minute seed is never repeated.
 
 ### Option A: second trial, second user, supported region (recommended, free)
 
-We are signed in as `sulaiman@sulaimanfabrictrialgmail.onmicrosoft.com`. That is
-a self-created trial tenant, which means we control its directory and can add
-users to it.
+We are signed in to a self-created `*.onmicrosoft.com` trial tenant, which means
+we control its directory and can add users to it.
 
 A Fabric trial is one per *user*, not one per tenant, and the region is chosen
 at activation. So:
