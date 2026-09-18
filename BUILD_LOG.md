@@ -969,3 +969,47 @@ At full scale it is back to 27.55% and is arguably too common again.
 **Any rule whose definition references a window over an entity must be
 calibrated on the full population, not a slice.** Row-level rules can be tuned
 on a sample; history-dependent ones cannot.
+
+---
+
+## 31. Gold layer landed in Fabric
+
+| Step | Result |
+| --- | --- |
+| Gold parquet uploaded | 9 files, **1.86 GB in 4.0 min**, 0 failures |
+| Spark V-Order write | **3 min 22 s** on capacity |
+| Delta tables in OneLake | 9 tables, 79 files, **2.5 GB** |
+
+The upload is worth comparing against the bronze seed: 1.86 GB in four minutes
+here, against 10.5 GB in twenty-nine minutes for the raw landing data. The gold
+layer is roughly five times smaller than the bronze it derives from, because
+typing and conforming lets the parquet encoder do its job on columns that were
+previously all strings.
+
+### Deploying a notebook through the CLI
+
+Two failures worth recording, both of which produce an opaque error.
+
+**Fabric's import expects `.ipynb` JSON.** The `notebook-content.py` source
+format that appears in git-integrated workspaces is rejected outright:
+
+```
+InvalidNotebookContent: Failed to cast json string to type: IPythonNotebook
+```
+
+**The default lakehouse must be declared in notebook metadata.** Under
+`metadata.dependencies.lakehouse`, giving `default_lakehouse`,
+`default_lakehouse_name` and `default_lakehouse_workspace_id`. Without it an
+API-triggered run has no lakehouse context, so every relative path such as
+`Files/gold` and every `saveAsTable` fails. The notebook only works if a human
+opens it and attaches a lakehouse by hand, which defeats the point of triggering
+it from CI.
+
+### The V-Order split, in practice
+
+DuckDB cannot produce V-Order, writes Delta INSERT-only with no MERGE or schema
+evolution, and never writes checkpoints, so a table written entirely by DuckDB
+accumulates an unbounded transaction log. Splitting on that boundary, DuckDB for
+the transformation and Spark for the write, took **3 minutes 22 seconds** of
+Spark time for 49.4M rows across nine tables. That is a small price for keeping
+the analytical work in DuckDB while still getting a Direct Lake ready layout.
