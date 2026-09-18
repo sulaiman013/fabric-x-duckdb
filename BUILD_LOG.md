@@ -900,3 +900,72 @@ on-prem PostgreSQL 16
 2. `cdc_to_fabric.py --setup` to create the `fabric_cdc` slot (only after the rewrite, so the slot does not pin rewrite WAL)
 3. `cdc_to_fabric.py --run` to start streaming
 4. Issue INSERT / UPDATE / DELETE in PostgreSQL and verify in Fabric that rows appear, change and disappear
+
+---
+
+## 30. Phase 2: gold layer at full scale
+
+Built the complete star schema over all 50,000,000 rows.
+
+| Metric | Value |
+| --- | --- |
+| Scored | 50,000,000 |
+| Deduped | 49,406,790 |
+| Removed | **593,210 (1.19%)** |
+| Null foreign keys | **0** across all six dimensions |
+| Gold output | 1.9 GB parquet, 9 tables |
+| Risk bands | 73.2% low, 23.9% medium, 2.9% high |
+
+The deduplication count is an independent validation: 593,210 rows removed
+against the 593,209 duplicate `txn_id` values measured directly in PostgreSQL.
+The extra one is the insert made during the CDC proof.
+
+### Two failures worth keeping
+
+**A surrogate key that cost 38 GiB.** The first full run died with
+`OutOfMemoryException` after exhausting 38.3 GiB of spill. `fact_alert` minted an
+`alert_key` using `row_number() OVER (ORDER BY _mirror_row_id, rule_id)`, which
+is a global sort over roughly 48,000,000 alert rows. On the 2M test slice that
+sort is trivial; at full scale it is fatal. `(_mirror_row_id, rule_id)` was
+already unique by construction, so the surrogate identified nothing the natural
+key did not and cost a full sort to produce. Removed.
+
+The general lesson: adding a surrogate key is a reflex in dimensional modelling,
+and it is the wrong reflex when the natural key is already unique and the
+surrogate requires ordering the whole table to generate.
+
+**DuckDB's temp directory follows the database file.** That meant spilling to
+`C:` with 43 GB free rather than `D:` with 479 GB. Fine on a single-volume
+machine, wrong here, and it only shows up once a query spills more than the
+smaller volume holds. Now set explicitly.
+
+### Rule calibration does not survive a change of scale
+
+Fire rates measured on 2,000,000 rows did not hold at 50,000,000:
+
+| Rule | 2M | 50M | Window dependent |
+| --- | --- | --- | --- |
+| R06 new_merchant | 1.12% | **27.55%** | yes |
+| R03 amount_anomaly | 0.94% | **7.34%** | yes |
+| R05 velocity | 1.20% | 1.75% | yes |
+| R02 card_not_present | 20.48% | 20.48% | no |
+| R04 odd_hour | 20.63% | 20.57% | no |
+| R07 high_risk_mcc | 4.28% | 4.30% | no |
+| R09 declined | 49.69% | 49.75% | no |
+
+The four rules with no window dependency held to two decimal places. The three
+that depend on per-customer history moved, and R06 moved 25 times over.
+
+The cause is structural rather than statistical. R06 and R03 are gated on
+history depth, `cust_txn_count >= 20` and five or more transactions
+respectively, and history depth is a function of how much of the population is
+in the sample. On 2M rows almost no customer had twenty transactions; on 50M
+many do.
+
+Which means the earlier recalibration of R06, from 85.88% down to a comfortable
+1.12%, was measured on a sample that could not support the rule being tested.
+At full scale it is back to 27.55% and is arguably too common again.
+
+**Any rule whose definition references a window over an entity must be
+calibrated on the full population, not a slice.** Row-level rules can be tuned
+on a sample; history-dependent ones cannot.
