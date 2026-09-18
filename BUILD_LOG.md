@@ -1185,3 +1185,55 @@ eleven analysts and that one needs three hundred and seventeen".
 
 Sources: PwC false positive benchmark via FluxForce and Tookitaki industry
 reviews, analyst throughput figure from the same.
+
+---
+
+## 35. Pricing the threshold: precision, recall and headcount
+
+Rule effectiveness needs ground truth and this source has none, so
+`scripts/threshold_analysis.py` generates a simulated confirmed-fraud label as a
+probabilistic function of `risk_score`, seeded from `_mirror_row_id` so the same
+row always draws the same outcome. Calibrated to a 0.083% overall fraud rate,
+which is the order of magnitude usually quoted for card fraud.
+
+Stated as simulated wherever it appears. Without it, precision and recall are not
+computable and a threshold can only be asserted.
+
+| Threshold | Alerts | Alert % | Precision | Recall | FP rate | Analyst-yrs | FTE |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 10 | 39,613,473 | 80.18% | 0.101% | 97.2% | 99.9% | 792.3 | 317 |
+| 20 | 23,528,614 | 47.62% | 0.160% | 91.4% | 99.8% | 470.6 | 188 |
+| 30 | 13,241,681 | 26.80% | 0.250% | **80.5%** | 99.8% | 264.8 | **106** |
+| 40 | 7,078,109 | 14.33% | 0.367% | 63.3% | 99.6% | 141.6 | 57 |
+| 50 | 3,533,239 | 7.15% | 0.534% | 46.0% | 99.5% | 70.7 | 28 |
+| **60** | **1,408,756** | **2.85%** | 0.806% | **27.6%** | 99.2% | 28.2 | **11** |
+| 70 | 441,474 | 0.89% | 1.173% | 12.6% | 98.8% | 8.8 | 4 |
+| 80 | 181,393 | 0.37% | 1.487% | 6.6% | 98.5% | 3.6 | 1 |
+| 90 | 50,937 | 0.10% | 2.122% | 2.6% | 97.9% | 1.0 | 0 |
+
+### What the curve says
+
+**A 99% false-positive rate is normal here, not a defect.** Published benchmarks
+put legacy rule-only transaction monitoring at 97-99% false positives, and every
+threshold in this table lands in that band. The model is behaving like the real
+thing rather than failing.
+
+**The threshold chosen earlier catches 27.6% of fraud.** That is the honest price
+of an eleven-analyst function. Catching 80% means dropping to threshold 30, which
+needs 106 analysts: roughly ten times the people for three times the detection.
+
+**There is no comfortable answer**, which is the actual finding. Every row of
+this table is a real institution's staffing decision, and the reason AML teams
+run at 90-95% false positives is that the alternative is missing most of the
+fraud.
+
+### Caveat that belongs next to the numbers
+
+Precision never exceeds 2.1%, and that ceiling is partly a property of the
+simulated label: it was calibrated to a 0.083% base rate, so absolute precision
+is bounded by that choice rather than measured from reality.
+
+What is trustworthy is the **shape**. Precision rises monotonically with the
+threshold, recall falls, and the headcount curve is steeply non-linear. Those
+relationships are what a threshold decision turns on, and they would hold under
+any sensible base rate. The absolute precision figures would not.
