@@ -56,16 +56,33 @@ still be there when you go looking for it.
 ```
 duckdb in fabric/
   README.md
-  .gitignore              data/ and *.csv are never committed
+  BUILD_LOG.md            chronological record of how this was built
+  .gitignore              data, credentials and __pycache__ never committed
   scripts/
     schema.py             the 100 column definitions + mess injection
     generate.py           DuckDB generator, chunked and resumable
     validate.py           profiles the output and proves the mess is real
     load_postgres.py      parallel COPY into a raw TEXT landing table
+    snapshot_to_fabric.py seeds the mirror: Postgres -> parquet -> OneLake
+    cdc_to_fabric.py      continuous CDC: WAL -> __rowMarker__ parquet -> OneLake
+    cdc_demo.py           proves update/delete propagate, not just inserts
+    verify_fabric.py      reads the Delta transaction log to check what landed
+    test_cdc_parser.py    tests for the test_decoding payload parser
 
-D:/duckdb-fabric-data/csv/    <- the data itself (see "Where the data lives")
-  txn_part_00000.csv .. txn_part_00049.csv
-  _manifest.json
+D:/duckdb-fabric-data/
+  csv/                    50 chunks, 45 GB    <- generated raw data
+  snapshot/               16 parquet, 10.5 GB <- mirror seed
+```
+
+### Pipeline at a glance
+
+```
+generate.py    50M x 100 messy text columns            -> CSV on D:
+load_postgres.py   parallel COPY, all TEXT, LOGGED     -> landing.raw_txn (48 GB)
+                   + surrogate key _mirror_row_id
+snapshot_to_fabric.py  DuckDB reads Postgres -> zstd parquet -> azcopy -> LandingZone
+cdc_to_fabric.py       WAL -> logical slot -> parquet + __rowMarker__ -> LandingZone
+                   Fabric applies insert / update / delete to the Delta table
 ```
 
 ### Where the data lives, and why not here
