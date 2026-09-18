@@ -1372,9 +1372,21 @@ Both settings the docs name as prerequisites were already on:
 
 So the 403 is not a tenant setting. It is the region. `capacityRegion` is
 **UK South**, which the published table lists as "Not available: Fabric App
-(preview)". Both capacities on the tenant are UK South, and the trial capacity
-was created today, so starting a fresh trial would land in UK South again: trial
-region follows tenant home region. There is no free way around it.
+(preview)".
+
+My first reading of this was wrong and worth recording. I assumed a trial
+capacity inherits the tenant home region and concluded there was no free way
+around it. A trial actually offers a **region dropdown at activation**; the home
+region is only the default. Region is a choice.
+
+The real constraint is narrower: our trial already exists, it is UK South, and
+it is the capacity holding the mirror, the lakehouse, the gold layer and the
+model. Moving a workspace with Fabric items across regions requires deleting
+every Fabric item first, so re-regioning this trial means destroying Phases 1
+to 3. The existing trial stays put. The app needs a *second* capacity, and since
+a trial is one per **user** rather than per tenant, and this is a self-created
+trial tenant we control the directory of, a second user can start a second trial
+in a supported region for free.
 
 ### What is available here, also by probe
 

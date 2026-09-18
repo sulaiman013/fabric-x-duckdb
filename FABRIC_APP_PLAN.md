@@ -24,10 +24,8 @@ That detail decides the architecture, and section 4 explains why.
 
 ## 2. The blocker, established by probe rather than by reading
 
-The workspace sits on `capacityRegion: "UK South"`. Both capacities on the
-tenant are UK South and the trial capacity was created today, so starting a
-fresh trial lands in the same region: trial region follows the tenant home
-region.
+The workspace sits on `capacityRegion: "UK South"`, on the trial FTL64 capacity.
+Both capacities on the tenant are UK South.
 
 Creating the item type directly:
 
@@ -51,6 +49,21 @@ relevant tenant settings are already on:
 
 It is the region gate. The published region table lists UK South as
 "Not available: Fabric App (preview)", and the probe agrees.
+
+### Why we cannot simply re-region the existing trial
+
+A Fabric trial capacity **does** let you choose its region: the activation
+prompt offers a region dropdown and the tenant home region is only the default.
+So region is a choice, not a fate.
+
+The problem is timing. Our trial already exists, it is UK South, and it is the
+capacity holding the mirrored database, the lakehouse, the 49.4M-row gold layer
+and the semantic model. Moving a workspace with Fabric items to a capacity in a
+different region requires **deleting every Fabric item first**. Cancelling the
+trial to restart it elsewhere destroys Phases 1 to 3.
+
+So the existing trial stays exactly where it is. The app needs a *second*
+capacity, and section 5 is about how to get one.
 
 ### The region list moves, so re-probe rather than trust notes
 
@@ -92,19 +105,41 @@ re-uploaded, nothing is re-modelled, and the 29-minute seed is never repeated.
 
 ## 5. Options
 
-### Option A: F2 capacity in a supported region (recommended)
+### Option A: second trial, second user, supported region (recommended, free)
 
-Create an F2 in West Europe (nearest supported region, lowest latency to the UK
-South model), create a workspace on it, deploy the Fabric App there, point it at
-`fincrime_model`.
+We are signed in as `sulaiman@sulaimanfabrictrialgmail.onmicrosoft.com`. That is
+a self-created trial tenant, which means we control its directory and can add
+users to it.
 
-* Cost is real but small. F2 pay-as-you-go runs roughly USD 0.36/hour and
-  **capacities can be paused**. Resumed only while building and recording, a
-  realistic total is a few dollars, not a monthly SKU.
+A Fabric trial is one per *user*, not one per tenant, and the region is chosen
+at activation. So:
+
+1. Create a second user in the tenant.
+2. Sign in as that user and start a Fabric trial, selecting a **supported**
+   region from the activation dropdown. West Europe is closest to the UK South
+   data; UAE North and Southeast Asia are also supported and happen to sit in
+   the target job markets, which is worth something in a portfolio conversation.
+3. Create a workspace on that new trial capacity.
+4. Grant that user Read and Build on `fincrime_model`. Same tenant, so this is
+   an ordinary permission grant.
+5. Deploy the Fabric App there, pointed at the model by share link.
+
+* **Free**, and non-destructive: the UK South trial and everything on it is
+  untouched.
+* Delivers the genuine article: a real `AppBackend` item, deployed and running.
+* 60-day clock on the second trial, same as the first.
+
+### Option B: F2 capacity in a supported region (paid fallback)
+
+If the second-user route is blocked for any reason, create an F2 in West Europe
+and put the app workspace on that.
+
+* F2 pay-as-you-go runs roughly USD 0.36/hour and **capacities can be paused**.
+  Resumed only while building and recording, a realistic total is a few dollars,
+  not a monthly SKU.
 * Requires an Azure subscription with a payment method.
-* Delivers the genuine article: a real Fabric App item, deployed, demonstrable.
 
-### Option B: translytical task flow app, entirely in UK South
+### Option C: translytical task flow app, entirely in UK South
 
 Power BI report over the existing Direct Lake model, with write-back through
 User Data Functions into a Fabric SQL database. Both item types are confirmed
@@ -116,7 +151,7 @@ available here. This is already specified in `APP_DESIGN.md` section 9.
   constrained to what a Power BI report can express. A genuine triage queue with
   assignment and a detail panel is a stretch in a report.
 
-### Option C: build the source now, deploy when the region opens
+### Option D: build the source now, deploy when the region opens
 
 Scaffold and develop against `npm run dev`, commit the app source, and run
 `npx rayfin up` whenever UK South is enabled.
@@ -126,13 +161,20 @@ Scaffold and develop against `npm run dev`, commit the app source, and run
 
 ### Recommendation
 
-**A, with B as the fallback, and they compose rather than compete.**
+**A, with B as the paid fallback. C is not a competitor, it is the other half.**
 
 The operational write-back belongs in User Data Functions plus a Fabric SQL
-database regardless of which option runs, because a mirrored database is
-read-only and that is where state has to live. Option A then adds the proper
-application shell over the top. If the F2 is not wanted, the same UDFs are
-driven from a Power BI report instead and the work still lands.
+database whichever way this goes, because a mirrored database is read-only and
+state has to live somewhere. That work is unblocked in UK South today and is
+worth doing first regardless.
+
+Option A then adds the proper application shell over the top, for free. If the
+second-trial route turns out to be blocked, B buys the same outcome for a few
+dollars, and if neither is wanted, the same User Data Functions are driven from
+a Power BI report instead and none of the work is wasted.
+
+That ordering is deliberate: every step before the region decision is useful in
+all four options, so the decision can be deferred without stalling.
 
 ## 6. Build plan
 
@@ -145,7 +187,7 @@ settings enabled, semantic model `fincrime_model` live and DAX-verified.
 | 2 | User Data Functions: assign, disposition, escalate, bulk close | step 1 |
 | 3 | Prove write-back end to end: call a UDF, read the row back | step 2 |
 | 4 | Confirm the SQL database auto-mirrors to OneLake as Delta | step 1 |
-| 5 | Capacity in a supported region, new workspace on it | billing decision |
+| 5 | Second user, second trial in a supported region, new workspace on it | region decision |
 | 6 | `npm create @microsoft/rayfin@latest -- fincrime-console --template dataapp --workspace <ws>` | step 5 |
 | 7 | Point the app at `fincrime_model` by share link, build the six analytics pages | step 6 |
 | 8 | Wire the four operational queues to the UDFs from step 2 | steps 2, 7 |
@@ -170,6 +212,10 @@ Most portfolio pipelines stop at the dashboard. This one writes back.
 
 ## 7. Open questions
 
-1. Is an Azure subscription with billing available for the F2 in step 5?
+1. Which region for the second trial? West Europe is closest to the data. UAE
+   North and Southeast Asia are equally supported and sit in the target job
+   markets.
 2. Mirror the operational tables back into the gold layer on the next rebuild,
    or leave the loop documented but not wired?
+
+Neither blocks steps 1 to 4.
