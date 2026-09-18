@@ -1,0 +1,42 @@
+# ---------------------------------------------------------------------------
+# Credentials. This repository is PUBLIC. Nothing matching these patterns may
+# ever be committed. Local notes with IDs, passwords or connection strings stay
+# on disk and out of git.
+# ---------------------------------------------------------------------------
+*id and pass*
+*password*
+*secret*
+*credential*
+.env
+.env.*
+*.pgpass
+pgpass.conf
+*.pem
+*.key
+
+# ---------------------------------------------------------------------------
+# Generated data. The extract is ~45 GB and lives on D:, never in the repo.
+# ---------------------------------------------------------------------------
+data/
+*.csv
+*.parquet
+*.duckdb
+*.duckdb.wal
+_manifest.json
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# ---------------------------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

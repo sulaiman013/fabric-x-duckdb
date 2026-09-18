@@ -1,0 +1,186 @@
+# Raw Banking Extract: 50M x 100 columns
+
+A synthetic but deliberately *ungoverned* transaction extract, generated with
+DuckDB and landed untransformed in PostgreSQL. It exists to give downstream
+work something honest to chew on: a single wide flat table that looks like
+what a core banking system, a card switch and a CRM actually produce when
+nobody has cleaned up after them.
+
+**50,000,000 rows. 100 columns. Every column is text. Nothing is cleaned.**
+
+## Why nothing is transformed
+
+This is a landing zone, not a model. The extract contains values like
+`1,234.50`, `(45.00)`, `RM99.00`, `N/A`, `9999-12-31` and `05/03/2024`. None
+of those survive a cast to `NUMERIC` or `DATE` on the way in, and a landing
+zone that rejects rows is not a landing zone. So all 100 columns are created
+as `TEXT` and the bytes land exactly as generated. Typing, parsing and
+conforming are downstream concerns, which is the whole point: the mess has to
+still be there when you go looking for it.
+
+## Layout
+
+```
+duckdb in fabric/
+  README.md
+  .gitignore              data/ and *.csv are never committed
+  scripts/
+    schema.py             the 100 column definitions + mess injection
+    generate.py           DuckDB generator, chunked and resumable
+    validate.py           profiles the output and proves the mess is real
+    load_postgres.py      parallel COPY into a raw TEXT landing table
+
+D:/duckdb-fabric-data/csv/    <- the data itself (see "Where the data lives")
+  txn_part_00000.csv .. txn_part_00049.csv
+  _manifest.json
+```
+
+### Where the data lives, and why not here
+
+The CSV is roughly **45 GB** and the PostgreSQL table is roughly **55 GB**.
+This machine has ~61 GB free on `C:` and ~583 GB free on `D:`, and the
+PostgreSQL data directory sits on `C:` under `C:\Program Files\PostgreSQL\16\data`.
+
+Both artefacts therefore live on `D:`:
+
+* CSV output goes to `D:/duckdb-fabric-data/csv`
+* the Postgres table goes on a **tablespace** at `D:/pgdata/banking_raw`, so
+  the load does not fill the system drive
+
+Only the scripts live in this folder. That also keeps 45 GB of CSV out of a
+git repository, which the `.gitignore` enforces.
+
+## Usage
+
+### Generate
+
+```bash
+python scripts/generate.py --rows 50000000 --chunk 1000000 --out D:/duckdb-fabric-data/csv
+```
+
+Useful flags:
+
+| flag | meaning |
+| --- | --- |
+| `--rows` | total rows, duplicates included. Lands on the number exactly. |
+| `--chunk` | base rows per CSV file. 1M gives ~921 MB files. |
+| `--dup-rate` | fraction re-emitted as exact duplicate rows (default 1.2%) |
+| `--resume` | skip chunk files that already exist |
+| `--seed` | reproducibility |
+| `--threads`, `--memory-limit` | DuckDB tuning |
+
+Measured on this machine (16 threads, 31 GB RAM): **~42,500 rows/s**,
+**921 MB per million rows**, so 50M takes roughly 20 minutes and ~45 GB.
+
+Chunk size matters. At 25k rows per chunk the throughput collapses to ~6,000
+rows/s because compiling the very large 100-column SQL statement dominates.
+Keep chunks at 1M.
+
+### Validate
+
+```bash
+python scripts/validate.py --path D:/duckdb-fabric-data/csv
+```
+
+### Load into PostgreSQL
+
+Put the password in libpq's password file so it never appears on a command
+line or in a shell history. On Windows that is
+`%APPDATA%\postgresql\pgpass.conf`, one line:
+
+```
+localhost:5432:*:postgres:YOUR_PASSWORD
+```
+
+Then:
+
+```bash
+python scripts/load_postgres.py --path D:/duckdb-fabric-data/csv --jobs 4
+```
+
+The table is created **UNLOGGED** for load speed (no WAL). Convert it
+afterwards if you want crash safety:
+
+```sql
+ALTER TABLE landing.raw_txn SET LOGGED;
+```
+
+`--resume` skips files already recorded in `landing._load_log`, so an
+interrupted load picks up where it stopped.
+
+## The data
+
+100 columns in nine groups, modelled on a Malaysian retail bank:
+
+| group | cols | examples |
+| --- | --- | --- |
+| transaction core | 10 | `txn_id`, `txn_datetime`, `posting_date`, `txn_type`, `narrative` |
+| account | 11 | `account_no`, `iban`, `product_name`, `branch_name` |
+| customer | 17 | `full_name`, `nric_passport`, `dob`, `occupation`, `income_band` |
+| address | 6 | `addr_line1`, `addr_city`, `addr_state`, `addr_postcode` |
+| KYC / compliance | 10 | `kyc_status`, `risk_rating`, `pep_flag`, `aml_score` |
+| merchant | 9 | `merchant_name`, `merchant_mcc`, `terminal_id` |
+| amounts | 12 | `txn_amount`, `fx_rate`, `fee_amount`, `balance_after` |
+| card | 10 | `card_no_masked`, `card_brand`, `card_expiry`, `auth_response` |
+| channel / device | 8 | `channel`, `device_id`, `ip_address`, `user_agent` |
+| ops / audit | 7 | `reversal_flag`, `settlement_batch`, `source_system`, `record_hash` |
+
+### Entities stay coherent
+
+Attributes that belong to an entity rather than to a transaction are chosen by
+`hash(entity_id)`, not `random()`. A customer therefore keeps the same
+underlying name, date of birth, occupation and address across every one of
+their rows, and a merchant keeps the same MCC.
+
+The mess is applied *on top* of that. The result is the real problem you want
+to practise on: one customer appearing as `Ahmad bin Abdullah`,
+`AHMAD BIN ABDULLAH`, ` ahmad  bin abdullah `, and `Abdullah, Ahmad` -- rather
+than the useless alternative where every row is a different person and no
+join or dedupe exercise means anything.
+
+### The mess catalogue
+
+Measured on a 300k-row sample:
+
+* **mean 18.4%** of values per column are null, null-like or whitespace-padded
+* null lookalikes: `NULL`, `N/A`, `NA`, `-`, `unknown`, `none`, `#N/A`, `''`
+* **five date formats** in the same column: `2024-03-05`, `05/03/2024`,
+  `03/05/2024`, `5-Mar-24`, `05.03.2024`
+* sentinel dates: `1900-01-01`, `9999-12-31`, `0000-00-00`, `1970-01-01`
+* money as text: `1,234.50`, `RM99.00`, `(45.00)` for negatives, bare floats
+* timestamps with, without and half-with timezone, plus raw epoch integers
+* leading-zero loss and float artefacts in `account_no` and `card_last4`
+* casing and abbreviation drift everywhere
+* **1.18% exact duplicate rows**
+* typos seeded into categoricals (`Enginer`, `Techer`, `TRANSFERR`, `PO S`)
+* free text containing commas and quotes, correctly CSV-quoted
+
+Which produces, on the 300k sample:
+
+| column | parses cleanly |
+| --- | --- |
+| `posting_date` as a date | 52.4% |
+| `txn_amount` as a number | 81.7% |
+| `balance_after` as a number | 70.5% |
+| `txn_datetime` as a timestamp | 95.8% |
+
+and 31 distinct spellings of the country Malaysia, 34 of `txn_type`, 43 of
+`card_brand`.
+
+### NULL vs empty string
+
+DuckDB writes SQL `NULL` as an unquoted empty field and a genuine empty string
+as a quoted `""`. Postgres CSV `COPY` reads unquoted empty as `NULL` and `""`
+as an empty string, so the distinction survives the round trip. Both are
+present in the data on purpose.
+
+## Notes and gotchas
+
+* `strftime` in DuckDB requires a **constant** format string, so mixed date
+  formats are built with `CASE`, not by indexing a list of formats.
+* Print anything through `PYTHONIOENCODING=utf-8` on Windows; the default
+  cp1252 console encoding cannot render DuckDB's box-drawing output.
+* Duplicates are appended at the end of each chunk file rather than
+  interleaved. Across 50 files they still land throughout the dataset.
+* Generating into a temp table before writing is what makes *exact* duplicates
+  possible; a re-scan would re-roll `random()` and produce near-duplicates.
