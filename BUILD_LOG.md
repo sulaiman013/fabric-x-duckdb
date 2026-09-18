@@ -301,7 +301,88 @@ All probe files were removed; the landing zone is clean.
 
 ---
 
-## 12. Current state
+## 12. Snapshot exporter, and the poll race
+
+Built `scripts/snapshot_to_fabric.py`:
+
+```
+PostgreSQL --(DuckDB postgres scanner)--> zstd Parquet --(azcopy)--> OneLake LandingZone
+```
+
+DuckDB reads Postgres directly via the `postgres` extension at ~41,780 rows/s,
+writing one file per thread with `PER_THREAD_OUTPUT`, then renaming to the
+20-digit contiguous sequence open mirroring requires.
+
+### The race that costs you the table
+
+First trial run (200k rows) uploaded cleanly, azcopy reported
+`Final Job Status: Completed` with zero failures, and the file on OneLake
+measured **46,541,460 bytes — byte-identical to local**. Fabric still failed:
+
+```
+We encountered an error while opening the Parquet file
+'.../00000000000000000001.parquet' ...
+'Invalid: Parquet file size is 0 bytes'
+```
+
+Fabric polls the landing zone roughly **every 20 seconds** and had opened the
+file while azcopy was still writing it. Worse, the failure **latches**: the
+error persisted at `SequenceNumber: 0` and Fabric never retried, even once the
+file was complete. The documented recovery is to delete and recreate the table
+folder.
+
+Attempted fix via ADLS atomic rename (upload as `.tmp`, then
+`x-ms-rename-source`) failed, because `fab` parses the header value as a Fabric
+item path and rejects it:
+
+```
+Required item type extension is missing in the item name.
+Expected format {itemname}.{itemtype}
+```
+
+**Working fix: invert the documented order.** Fabric ignores a table folder that
+has no `_metadata.json`, so:
+
+1. upload every `.parquet` first and verify the sizes landed
+2. upload `_metadata.json` last, which arms ingestion
+
+By the time Fabric looks, every file is complete. The script also refuses to
+write `_metadata.json` if the data upload fails, so a partial set is never
+ingested.
+
+---
+
+## 13. Open mirroring verified end to end
+
+With the corrected ordering, the 200k-row trial ingested cleanly:
+
+| Field | Value |
+| --- | --- |
+| `status` | **Replicating** |
+| `processedRows` | **200,000** |
+| `processedBytes` | 341,250,566 |
+| `lastSyncDateTime` | 2026-09-18T06:39:26Z |
+| Errors | none |
+
+A real Delta table materialized in OneLake:
+
+```
+Tables/dbo/raw_txn_test/_delta_log/00000000000000000000.json
+Tables/dbo/raw_txn_test/_delta_log/00000000000000000001.json
+Tables/dbo/raw_txn_test/part-00000-....c000.zstd.parquet
+Tables/dbo/raw_txn_test/_index_bin/part-00000-....c000.zstd.ibin
+```
+
+The `_index_bin` file is Fabric's V-Order index, and processed landing-zone
+files were moved to `_FilesReadyToDelete` as documented.
+
+The full chain is therefore proven:
+
+> PostgreSQL -> DuckDB -> zstd Parquet -> azcopy -> OneLake LandingZone -> Fabric Delta table
+
+---
+
+## 14. Current state
 
 **Done**
 
