@@ -1422,3 +1422,90 @@ to OneLake as Delta with no configuration, so a disposition written through a
 User Data Function becomes data in the lake, which the next gold rebuild can
 join back to `fact_alert`. Alert precision then stops being simulated against a
 seeded label and starts being measured against what analysts actually decided.
+
+## 38. The operational store, and the closed loop proved rather than asserted
+
+Steps 1 and 4 of `FABRIC_APP_PLAN.md`. Both are unblocked in UK South, so they
+went ahead while the region question stayed open.
+
+### The store
+
+`fincrime_ops`, a Fabric SQL database. Unlike the mirrored database, which is
+read-only by design, this one is read-write, and it holds the state the console
+produces: alert dispositions, dispute cases and their transitions, KYC actions,
+and who owns what. Five tables, per `APP_DESIGN.md` section 9.
+
+Two of them carry `_mirror_row_id`. No subset of the 100 business columns is
+unique, so the surrogate key added for mirroring is the only stable handle back
+to a specific source row. It earns its keep a second time here.
+
+### The obstacle: there is no local credential for SQL
+
+The obvious approach was to run the DDL from this machine over pyodbc, reusing
+the Fabric CLI's cached token rather than prompting for a second login. That
+failed, and the reason is worth recording.
+
+`fab auth login` writes an MSAL cache to `~/.config/fab/cache.bin`, DPAPI
+encrypted. Reading it through `FilePersistenceWithDataProtection` works, and the
+account is there. But the cache contains:
+
+| Section | Contents |
+| --- | --- |
+| `AccessToken` | three, for storage, the Fabric API and ARM |
+| `RefreshToken` | **none** |
+
+Without a refresh token, `acquire_token_silent` cannot mint a token for a new
+audience, and a SQL connection needs `https://database.windows.net`. Three
+cached access tokens for the wrong audiences are no help. There is also no
+DDL-over-REST endpoint for a Fabric SQL database, so `fab api` cannot stand in.
+
+### The fix: run it where the credential exists
+
+A notebook runs on the capacity, where `notebookutils.credentials.getToken`
+issues exactly that audience. So `04_ops_ddl.Notebook` does the work, and
+`fab job run` makes it repeatable rather than a one-off.
+
+The DDL is not copied into the notebook. `scripts/build_ops_notebook.py`
+generates the notebook from the `DDL` list in `scripts/ops_db.py`, so the local
+tool and the deployed notebook cannot drift apart. Same pattern as
+`build_semantic_model.py` generating TMDL. Every statement guards on existence,
+so a re-run is safe.
+
+### Verified, not assumed
+
+The job reported `Completed` in 14 seconds, which is fast enough for a Spark
+start to be suspicious, so the status was not taken as proof. The tables were
+checked independently through the OneLake filesystem API:
+
+```
+Tables/ops/alert_disposition   _delta_log/00000000000000000000.json, ...0001.json
+Tables/ops/assignment          _delta_log/...
+Tables/ops/case                _delta_log/...
+Tables/ops/case_event          _delta_log/...
+Tables/ops/kyc_action          _delta_log/...
+```
+
+Five tables, ten Delta commits.
+
+### Which also settles step 4
+
+That listing is the evidence for the closed loop, and it cost nothing extra to
+obtain. A Fabric SQL database **mirrors itself to OneLake as Delta with no
+configuration at all**: nothing was set up, no replication was started, and the
+tables appeared under `Tables/ops/` as Delta the moment they existed. The
+landing zone and `Files/Monitoring/replicator.json` alongside them are the
+mirroring machinery, running unasked.
+
+So a disposition written through a User Data Function into `fincrime_ops` lands
+in OneLake as data, where the next gold rebuild can join it back to
+`fact_alert`. The model says which alerts to work, the app records what the
+analyst decided, and that decision becomes an input to the next model. Alert
+precision stops being simulated against a seeded label and starts being measured
+against what analysts actually did.
+
+That was the part of the plan most likely to be wishful. It is now observed.
+
+### Still open
+
+Steps 2 and 3, the User Data Functions and proving write-back end to end. Step 5
+onward still waits on the region decision.
