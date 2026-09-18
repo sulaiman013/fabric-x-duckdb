@@ -1,0 +1,94 @@
+table dim_date
+	lineageTag: 051fbfa8-f0f4-41c5-b905-ca866f12ecb0
+
+	column date_key
+		dataType: int64
+		isHidden
+		lineageTag: 5d0619f5-482c-4935-b011-c7bb2bcc558d
+		summarizeBy: none
+		sourceColumn: date_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column full_date
+		dataType: dateTime
+		formatString: Short Date
+		lineageTag: 8dc1c80c-9948-41f3-bf1b-7fdf24331bb4
+		summarizeBy: none
+		sourceColumn: full_date
+
+		annotation SummarizationSetBy = Automatic
+
+	column yr
+		dataType: int64
+		lineageTag: 47098b43-70f3-4f99-b30d-f6679dd902d5
+		summarizeBy: sum
+		sourceColumn: yr
+
+		annotation SummarizationSetBy = Automatic
+
+	column qtr
+		dataType: int64
+		lineageTag: 4a1bf2ff-2b9e-44d3-8f4f-5ace713475a5
+		summarizeBy: sum
+		sourceColumn: qtr
+
+		annotation SummarizationSetBy = Automatic
+
+	column mth
+		dataType: int64
+		lineageTag: b0510bd3-4186-42b1-81ba-f9f38766ab52
+		summarizeBy: sum
+		sourceColumn: mth
+
+		annotation SummarizationSetBy = Automatic
+
+	column month_name
+		dataType: string
+		lineageTag: 89b7d98f-fb31-48c6-9375-1622f9eb5ca2
+		summarizeBy: none
+		sourceColumn: month_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column day_of_month
+		dataType: int64
+		lineageTag: f94a6724-f5ee-4326-a51c-5d836ba77b49
+		summarizeBy: sum
+		sourceColumn: day_of_month
+
+		annotation SummarizationSetBy = Automatic
+
+	column day_of_week
+		dataType: int64
+		isHidden
+		lineageTag: d7a870a2-9638-47a8-b6b0-d0881cdf4565
+		summarizeBy: none
+		sourceColumn: day_of_week
+
+		annotation SummarizationSetBy = Automatic
+
+	column day_name
+		dataType: string
+		lineageTag: 5e25aaf8-4e04-4532-970f-2b1a7a863f30
+		summarizeBy: none
+		sourceColumn: day_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column is_weekend
+		dataType: boolean
+		lineageTag: 8f0c09e3-f0bb-4583-a441-fcbae96b0153
+		summarizeBy: none
+		sourceColumn: is_weekend
+
+		annotation SummarizationSetBy = Automatic
+
+	partition dim_date = entity
+		mode: directLake
+		source
+			entityName: gold_dim_date
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

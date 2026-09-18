@@ -1,0 +1,36 @@
+table dim_card
+	lineageTag: 97ae0c27-8806-4a23-9759-9ff0bd954505
+
+	column card_key
+		dataType: int64
+		isHidden
+		lineageTag: e363132a-6576-4e16-8341-0cfd62593d67
+		summarizeBy: none
+		sourceColumn: card_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column card_bin
+		dataType: string
+		lineageTag: 55380ce3-d593-43a3-aa54-6c0af19c08c4
+		summarizeBy: none
+		sourceColumn: card_bin
+
+		annotation SummarizationSetBy = Automatic
+
+	column card_brand
+		dataType: string
+		lineageTag: 6f13dcb6-e435-4411-86b1-848feeeab33b
+		summarizeBy: none
+		sourceColumn: card_brand
+
+		annotation SummarizationSetBy = Automatic
+
+	partition dim_card = entity
+		mode: directLake
+		source
+			entityName: gold_dim_card
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

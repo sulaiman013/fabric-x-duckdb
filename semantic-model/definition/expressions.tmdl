@@ -1,0 +1,7 @@
+expression DatabaseQuery =
+		let
+			database = Sql.Database("6xdtv76wvqse5lz63juf6hq7gy-bvxa67rqg6pujc7gfpvoykcypm.datawarehouse.fabric.microsoft.com", "fincrime")
+		in
+			database
+	lineageTag: 5a270cda-357d-4c5b-9a9f-d455efc81955
+

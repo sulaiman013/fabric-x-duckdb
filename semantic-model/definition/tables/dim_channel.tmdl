@@ -1,0 +1,44 @@
+table dim_channel
+	lineageTag: 67ade804-f775-40f2-98ce-954d941f81e1
+
+	column channel_key
+		dataType: int64
+		isHidden
+		lineageTag: bfd1f0b4-fe28-47c6-ad3d-d2820d6a790a
+		summarizeBy: none
+		sourceColumn: channel_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column channel
+		dataType: string
+		lineageTag: d8d353fe-e587-493b-8d1b-331b924d16d2
+		summarizeBy: none
+		sourceColumn: channel
+
+		annotation SummarizationSetBy = Automatic
+
+	column entry_mode
+		dataType: string
+		lineageTag: b154e3cd-d377-4d93-8173-6a0025375350
+		summarizeBy: none
+		sourceColumn: entry_mode
+
+		annotation SummarizationSetBy = Automatic
+
+	column is_card_not_present
+		dataType: boolean
+		lineageTag: 8d783b54-6e08-478d-ae15-ddaa94330e22
+		summarizeBy: none
+		sourceColumn: is_card_not_present
+
+		annotation SummarizationSetBy = Automatic
+
+	partition dim_channel = entity
+		mode: directLake
+		source
+			entityName: gold_dim_channel
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

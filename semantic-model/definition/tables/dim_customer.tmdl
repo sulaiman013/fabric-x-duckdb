@@ -1,0 +1,136 @@
+table dim_customer
+	lineageTag: cd22fb16-a868-453a-acde-8bbfdc472517
+
+	column customer_key
+		dataType: int64
+		isHidden
+		lineageTag: 1a933466-d900-4289-bf8d-db853c9ba02e
+		summarizeBy: none
+		sourceColumn: customer_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column customer_id
+		dataType: string
+		lineageTag: 5380ab9b-6493-4c4a-b734-ca2e285e82e1
+		summarizeBy: none
+		sourceColumn: customer_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column first_name
+		dataType: string
+		lineageTag: 5beadb8f-8c32-4cbd-8e21-22ebb37f1e63
+		summarizeBy: none
+		sourceColumn: first_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column last_name
+		dataType: string
+		lineageTag: 703055ba-377d-4e76-8eaf-1ee5f029defd
+		summarizeBy: none
+		sourceColumn: last_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column gender
+		dataType: string
+		lineageTag: 5dac0aeb-520f-42a4-880d-0a8fcffaac9f
+		summarizeBy: none
+		sourceColumn: gender
+
+		annotation SummarizationSetBy = Automatic
+
+	column date_of_birth
+		dataType: dateTime
+		formatString: Short Date
+		lineageTag: d0ce9277-2c81-451b-942d-65699d7d21be
+		summarizeBy: none
+		sourceColumn: date_of_birth
+
+		annotation SummarizationSetBy = Automatic
+
+	column occupation
+		dataType: string
+		lineageTag: 4fd7be19-9b38-4b3a-8cfe-d460fba4fe56
+		summarizeBy: none
+		sourceColumn: occupation
+
+		annotation SummarizationSetBy = Automatic
+
+	column addr_city
+		dataType: string
+		lineageTag: 052c48a2-6612-4283-b58a-009b608f859b
+		summarizeBy: none
+		sourceColumn: addr_city
+
+		annotation SummarizationSetBy = Automatic
+
+	column addr_state
+		dataType: string
+		lineageTag: 37ae31b1-187d-4e1f-b456-790680898f7f
+		summarizeBy: none
+		sourceColumn: addr_state
+
+		annotation SummarizationSetBy = Automatic
+
+	column nationality
+		dataType: string
+		lineageTag: c2b177a4-76f0-4bf9-8cc3-db37cf249050
+		summarizeBy: none
+		sourceColumn: nationality
+
+		annotation SummarizationSetBy = Automatic
+
+	column kyc_rank
+		dataType: int64
+		isHidden
+		lineageTag: d64ed498-c3ef-4ca0-81d3-9cb6e5cfeb26
+		summarizeBy: none
+		sourceColumn: kyc_rank
+
+		annotation SummarizationSetBy = Automatic
+
+	column ever_pep
+		dataType: boolean
+		lineageTag: 030112b6-7d71-4183-bcc8-b92b3d9c438e
+		summarizeBy: none
+		sourceColumn: ever_pep
+
+		annotation SummarizationSetBy = Automatic
+
+	column ever_sanctioned
+		dataType: boolean
+		lineageTag: 0bd31b8c-79ce-4064-9215-bc3cebcdbcac
+		summarizeBy: none
+		sourceColumn: ever_sanctioned
+
+		annotation SummarizationSetBy = Automatic
+
+	column risk_rank
+		dataType: int64
+		isHidden
+		lineageTag: 98884207-cad2-48f7-bceb-c58e699a7775
+		summarizeBy: none
+		sourceColumn: risk_rank
+
+		annotation SummarizationSetBy = Automatic
+
+	column txn_count
+		dataType: int64
+		formatString: #,0
+		lineageTag: 641750d7-6a7d-4457-aad7-30eb49af2eac
+		summarizeBy: sum
+		sourceColumn: txn_count
+
+		annotation SummarizationSetBy = Automatic
+
+	partition dim_customer = entity
+		mode: directLake
+		source
+			entityName: gold_dim_customer
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

@@ -1057,3 +1057,77 @@ cancelled the whole session, so every other check was lost along with it.
 Rewritten so each check runs inside its own `attempt()` wrapper and records its
 own error. A verification script that cannot survive one failing check verifies
 nothing.
+
+---
+
+## 33. Phase 3: Direct Lake semantic model
+
+Authored as TMDL rather than generated. The bundled `create_direct_lake_model.py`
+helper builds a single-table model; a nine-table star with relationships and
+measures has to be written.
+
+| Element | Count |
+| --- | --- |
+| Tables, all `mode: directLake` | 9 |
+| Relationships | 8 |
+| Measures | 13 |
+
+Direct Lake is not a preference here. The write-back design in section 9 of
+`APP_DESIGN.md` depends on an analyst's disposition being visible immediately,
+and an import-mode model only reflects a write after a refresh.
+
+`discourageImplicitMeasures` is set so authors use the defined measures instead
+of dragging raw columns onto visuals. Surrogate keys are `summarizeBy: none`,
+because summing a key is meaningless and is a reliable way for a model to
+produce confident nonsense.
+
+### Three failures getting it deployed
+
+**TMDL is indentation sensitive.** A multi-line DAX measure body indented with
+spaces rather than tabs fails the whole import with nothing but
+`Invalid indentation was detected` and a line number. The measure was collapsed
+onto one line.
+
+**The SQL endpoint lags Delta table creation.** The first DAX query failed with
+`Invalid object name 'gold_fact_transaction'` even though the Delta tables were
+visibly present in OneLake. Direct Lake resolves entity names through the
+lakehouse SQL endpoint, and that endpoint syncs its metadata asynchronously.
+`POST /workspaces/{ws}/sqlEndpoints/{id}/refreshMetadata` forces it; the call
+itself timed out at 240 seconds but the sync completed and the next query
+returned.
+
+**`fab get` is not supported on a SQLEndpoint item.** Endpoint properties have
+to be read from the parent lakehouse's `sqlEndpointProperties` instead.
+
+### Verified over Direct Lake, no import
+
+| Measure | Value |
+| --- | --- |
+| Transactions | **49,406,790** |
+| High Risk Transactions | 1,408,756 |
+| High Risk Rate | 2.85% |
+| Alerts | 65,088,689 |
+| Alert Fire Rate | **80.18%** |
+| Distinct Customers | 5,112,692 |
+| Average Risk Score | 19.74 |
+| Approval Rate | 39.38% |
+
+### An 80% alert rate is a finding, not a success
+
+The model is computing correctly. The rules are not fit for purpose.
+
+An alert fire rate of 80.18% means four transactions in five raise at least one
+alert. No financial crime function can triage that; it is the definition of
+alert fatigue, and in a real bank it would bury the 2.85% that are genuinely
+high risk.
+
+The cause is the two loosest rules: `R09 declined` fires on 49.75% and
+`R06 new_merchant` on 27.55% at full scale. Both were judged acceptable on a
+2,000,000 row slice and neither is acceptable now.
+
+Fixing this properly means raising thresholds until the alert rate lands
+somewhere a team could actually work, conventionally a low single-digit
+percentage, and then measuring what that costs in missed high-risk
+transactions. That is a precision and recall trade-off, and it needs the
+simulated outcome label from section 6 of `APP_DESIGN.md` to be measurable at
+all. Recorded here rather than quietly tuned away.
