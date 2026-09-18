@@ -30,6 +30,26 @@ from transform import silver_sql          # noqa: E402
 from rules import RULES, enriched_sql, scored_sql  # noqa: E402
 
 
+def export_source(con, table):
+    """
+    What COPY reads when a gold table is exported to parquet.
+
+    Naive TIMESTAMP columns are cast to TIMESTAMPTZ. The session is pinned to
+    UTC, so the instant equals the naive value read as UTC, and the parquet
+    carries isAdjustedToUTC=true. Spark reads that as an ordinary timestamp; a
+    naive column it reads as TIMESTAMP_NTZ, which the existing Delta tables do
+    not accept and Direct Lake does not serve. BUILD_LOG section 40.
+    """
+    cols = [r[0] for r in con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = ? AND data_type = 'TIMESTAMP' ORDER BY ordinal_position",
+        [table]).fetchall()]
+    if not cols:
+        return table
+    rep = ", ".join("CAST(%s AS TIMESTAMPTZ) AS %s" % (c, c) for c in cols)
+    return "(SELECT * REPLACE (%s) FROM %s)" % (rep, table)
+
+
 def build(con, src):
     con.execute("CREATE OR REPLACE TABLE scored AS "
                 + scored_sql(enriched_sql(silver_sql(src))))
@@ -195,6 +215,7 @@ def main():
     con = duckdb.connect()
     con.execute("SET memory_limit='%s'" % args.memory_limit)
     con.execute("SET preserve_insertion_order=false")
+    con.execute("SET TimeZone='UTC'")   # results must not depend on where this runs
     # Spill to D:. The default temp directory follows the database file, which
     # here means C: with 43 GB free against D:'s 479 GB.
     con.execute("SET temp_directory='%s'" % args.temp_dir)
@@ -251,7 +272,7 @@ def main():
         for t in ("fact_transaction", "fact_alert", "dim_customer", "dim_merchant",
                   "dim_channel", "dim_card", "dim_date", "dim_time", "dim_risk_rule"):
             con.execute("COPY %s TO '%s/%s.parquet' (FORMAT PARQUET, COMPRESSION zstd)"
-                        % (t, args.out.replace('\\', '/'), t))
+                        % (export_source(con, t), args.out.replace('\\', '/'), t))
         print("\ngold written to %s" % args.out)
     return 0
 

@@ -72,9 +72,13 @@ SELECT *,
   -- how much history this customer has, so "first time at this merchant" is
   -- only treated as a signal where there was a pattern to depart from
   count(*) OVER (PARTITION BY customer_id) AS cust_txn_count,
-  -- first time this customer transacted at this merchant
+  -- first time this customer transacted at this merchant. Exact duplicate rows
+  -- tie on txn_ts, so the tiebreak must agree with dedup (lowest _mirror_row_id
+  -- survives); otherwise the group's only firing can land on the copy that is
+  -- dropped, and R06 varied by hundreds between runs. BUILD_LOG section 40.
   CASE WHEN customer_id IS NULL OR merchant_id IS NULL THEN FALSE
-       ELSE row_number() OVER (PARTITION BY customer_id, merchant_id ORDER BY txn_ts) = 1
+       ELSE row_number() OVER (PARTITION BY customer_id, merchant_id
+                               ORDER BY txn_ts, _mirror_row_id) = 1
   END AS first_seen_merchant
 FROM ({s})
 """.format(s=silver)
@@ -110,6 +114,7 @@ def main():
     con = duckdb.connect()
     con.execute("SET memory_limit='%s'" % args.memory_limit)
     con.execute("SET preserve_insertion_order=false")
+    con.execute("SET TimeZone='UTC'")   # results must not depend on where this runs
     con.execute("INSTALL postgres"); con.execute("LOAD postgres")
     con.execute("ATTACH 'host=%s dbname=%s user=%s' AS pg (TYPE postgres, READ_ONLY)"
                 % (args.host, args.dbname, args.user))

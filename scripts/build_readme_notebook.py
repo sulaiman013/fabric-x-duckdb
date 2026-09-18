@@ -49,22 +49,22 @@ F = {
     "seed_gb": "10.5",
     "seed_min": "29",
     "seed_ratio": "4.3x",
-    "gold_rows": "49,406,790",
-    "dupes": "593,210",
+    "gold_rows": "49,406,792",
+    "dupes": "593,209",
     "gold_parquet_gb": "1.86",
     "gold_delta_gb": "2.5",
-    "gold_files": "79",
+    "gold_files": "36",
     "vorder_s": "202",
-    "vorder_txt": "3 min 22 s",
+    "vorder_txt": "3 min 53 s",
     "model_tables": "9",
     "model_rels": "8",
     "model_measures": "17",
     "cube_cells": "2,508",
     "cube_pct": "4%",
     "ceiling": "2,100,000",
-    "alerts": "1,408,756",
-    "alert_rate": "2.85%",
-    "firings": "65,088,689",
+    "alerts": "1,423,088",
+    "alert_rate": "2.88%",
+    "firings": "65,175,479",
     "customers": "5,112,692",
     "posting_before": "47.5%",
     "posting_after": "93.0%",
@@ -131,9 +131,28 @@ created automatically with their parent and are not separate work.
 """ % F))
 
     A(code("""
+# Everything printed in this notebook is also captured, and the last cell
+# writes it next to the data, so a CLI-triggered run leaves readable evidence.
+import sys, io
+class _Tee:
+    def __init__(self, *streams): self.streams = streams
+    def write(self, text):
+        for st in self.streams: st.write(text)
+    def flush(self):
+        for st in self.streams: st.flush()
+_LOG = io.StringIO()
+if not isinstance(sys.stdout, _Tee):
+    sys.stdout = _Tee(sys.stdout, _LOG)
+
 # Live inventory, so this table can never go stale.
-%pip install -q semantic-link
-import sempy.fabric as fabric
+# Semantic link ships in the Python notebook runtime (Microsoft Learn, "Use
+# Python experience in notebooks"); the fallback only runs if a runtime drops it.
+try:
+    import sempy.fabric as fabric
+except ImportError:
+    import subprocess, sys
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "semantic-link"], check=True)
+    import sempy.fabric as fabric
 items = fabric.list_items()
 display(items[["Display Name", "Type", "Id"]].sort_values(["Type", "Display Name"]))
 """))
@@ -211,6 +230,34 @@ The mirrored table is exposed to the rest of the pipeline through a
 pointer, not a copy: DuckDB reads the mirror's own Delta files.
 """ % F))
 
+    A(md("""
+### What the row count did not show
+
+Every count-based check on this mirror passed, and the mirror was still wrong
+by two rows. The gold notebook's dedup reconciliation (section 2) found one
+more distinct `txn_id` in the mirror than PostgreSQL has, and a per-bucket
+histogram of ids on both sides named it: row 3870725, deleted at the source
+before the replication slot existed, so the delete was never in the WAL the
+replicator reads. The opposite case existed too: row 50000004, inserted in the
+same window, never reached the mirror. Two errors of opposite sign, and a row
+count that matched exactly.
+
+The second was repaired through the source: delete and re-insert the row in
+PostgreSQL, and the replicator streamed the insert as an ordinary change (CDC
+file 20). The first could not be. A delete replayed through the slot, alone in
+its own file and its own processing cycle, was applied only to the copies the
+CDC path had itself written and never to the seed copy; the mirror table's own
+Delta log and a scan of its data files show it (BUILD_LOG section 40). A row
+that predates the slot is only removable by re-seeding.
+
+The rule this teaches is cheap to follow and expensive to skip: **create the
+replication slot before taking the snapshot**, so nothing can fall between
+them. An insert seen twice is an upsert, a delete of a row the snapshot never
+had is a no-op, and a change that falls in the gap is lost silently. The cell
+below measures the mirror against the source figures so the difference is
+visible rather than assumed.
+"""))
+
     A(code("""
 # The mirror, as Fabric sees it: table, status, and the replication engine's
 # own view of what it has applied.
@@ -225,6 +272,20 @@ for t in status.json().get("data", []):
     rows = f"{rows:,}" if isinstance(rows, int) else str(rows)
     print(f"{t.get('sourceTableName','?'):<14} status={str(t.get('status')):<10} "
           f"rows processed={rows:>14}   last sync={m.get('lastSyncDateTime','?')}")
+
+# Fidelity, measured on the mirror itself. The source figures were measured in
+# PostgreSQL on 2026-09-19 (50,000,001 rows, 49,406,791 distinct txn_id).
+import duckdb
+PG_ROWS, PG_DISTINCT = 50000001, 49406791
+n, d = duckdb.connect().execute(
+    "SELECT count(*), count(DISTINCT trim(txn_id)) FROM delta_scan('/lakehouse/default/Tables/raw_txn')").fetchone()
+print(f"mirror rows {n:,} (source {PG_ROWS:,}, {n-PG_ROWS:+,}) | distinct txn_id {d:,} (source {PG_DISTINCT:,}, {d-PG_DISTINCT:+,})")
+if (n - PG_ROWS, d - PG_DISTINCT) == (1, 1):
+    print("the +1 is row 3870725, deleted at the source before the slot existed; see the note above")
+elif (n - PG_ROWS, d - PG_DISTINCT) == (0, 0):
+    print("mirror and source agree exactly")
+else:
+    print("the difference has changed since 2026-09-19: re-measure the source before trusting either figure")
 """))
 
     # =======================================================================
@@ -319,6 +380,34 @@ print()
 print("gold row counts:")
 for t, n in B["counts"].items():
     print(f"  {t:<18} {n:>12,}   {B['gold_parquet_mb'][t]:>8.1f} MB")
+
+# Determinism, rule by rule. RUN2 is job 71d68bc6 (2026-09-18, the first run
+# with the section 40 fixes), read back from its parquet; the run above must
+# match it exactly or no count on this page can be trusted.
+RUN2 = {"R02": 10118821, "R03": 3624172, "R04": 10164144, "R05": 864962,
+        "R06": 13697031, "R07": 2126003, "R09": 24580346}
+RF = B.get("rule_firings") or {}
+if RF:
+    print()
+    print("rule firings, this run against run 2 (same code, same source):")
+    same = True
+    for r in sorted(set(RF) | set(RUN2)):
+        a, b = RF.get(r), RUN2.get(r)
+        same = same and (a == b)
+        fa = "-" if a is None else format(a, ",")
+        fb = "-" if b is None else format(b, ",")
+        print(f"  {r:<5} {fa:>12}   run 2 {fb:>12}   {'same' if a == b else 'DIFFERENT'}")
+    print("  deterministic: identical rule by rule" if same
+          else "  NOT identical: investigate before trusting any count above")
+RC = B.get("recon")
+if RC:
+    print()
+    print(f"dedup: {RC['scored_rows']:,} scored -> {RC['deduped_rows']:,} kept, "
+          f"{RC['removed']:,} removed; {RC['distinct_txn_id_scored']:,} distinct txn_id; "
+          f"{RC['null_txn_id_deduped']:,} kept rows have no txn_id")
+    print(f"txn_ids that survive dedup more than once: {RC['multi_survivor_txn_ids']}")
+    for smp in RC["multi_survivor_samples"]:
+        print("  ", smp["txn_id"], "->", smp["rows"])
 """))
 
     A(code("""
@@ -350,8 +439,8 @@ transaction log.
 So the final write is handed to Spark, on purpose. `02_vorder_write` reads the
 nine parquet files and rewrites them as V-Ordered Delta tables named
 `gold_<table>`. That is the *only* Spark work in the pipeline:
-**%(vorder_txt)s** for %(gold_rows)s rows across nine tables (measured, BUILD_LOG
-section 31). The result is **%(gold_files)s files, %(gold_delta_gb)s GB** of
+**%(vorder_txt)s** wall time for %(gold_rows)s rows across nine tables (the latest
+run, from the jobs API; the cost cell in section 7 reads it live). The result is **%(gold_files)s files, %(gold_delta_gb)s GB** of
 Delta in OneLake.
 
 `03_verify` then reads the Delta logs on capacity and writes `Files/verify.json`
@@ -558,10 +647,13 @@ from Microsoft Learn:
 
 ### The build, measured
 
-The cell below reads the build's own record and prices it. Change
-`PRICE_PER_CU_HOUR` to your region's pay-as-you-go rate (Azure pricing page:
-*Microsoft Fabric*; the default below is a US list price and is an
-**assumption**).
+Capacity bills a notebook for its **session wall time**, startup included, not
+for the seconds its cells were busy. So the cell below prices the wall time of
+each notebook's most recent completed run, read live from the jobs API, and
+prints the build's own in-notebook work time beside it so the startup overhead
+is visible rather than hidden. Change `PRICE_PER_CU_HOUR` to your region's
+pay-as-you-go rate (Azure pricing page: *Microsoft Fabric*; the default below
+is a US list price and is an **assumption**).
 
 ### The comparison, and what is honest about it
 
@@ -588,20 +680,52 @@ PRICE_PER_CU_HOUR = 0.18   # USD, pay-as-you-go, US list price. ASSUMPTION: set 
 
 cu_python = 4                       # 8 vCores on the Python kernel (Microsoft Learn)
 cu_spark_starter = 8                # starter pool minimum after scale-up (Microsoft Learn)
-vorder_s = %(vorder_s)s             # measured, BUILD_LOG section 31
 
-build_s = T["total_s"]              # measured, this workspace, build_gold.json
+# Capacity bills a notebook for its session wall time, startup included, not
+# for the seconds its cells were busy. So the cost below uses the wall time of
+# each notebook's most recent completed run, read live from the jobs API, and
+# prints the in-notebook work time beside it so the overhead is visible.
+from datetime import datetime
+
+def _t(s):
+    return datetime.fromisoformat(s.rstrip("Z")[:26])
+
+def last_run_seconds(name, containing=None):
+    # The run that wrote the evidence is the one whose window contains the
+    # evidence's own timestamp; a cancelled run can be reported as Completed
+    # with a one-minute wall, so "latest completed" is not good enough.
+    nb = items[items["Display Name"].eq(name) & items["Type"].eq("Notebook")]["Id"].iloc[0]
+    runs = fabric.FabricRestClient().get(f"v1/workspaces/{ws}/items/{nb}/jobs/instances").json().get("value", [])
+    done = [r for r in runs if r.get("status") == "Completed" and r.get("endTimeUtc")]
+    if containing:
+        at = _t(containing)
+        done = [r for r in done if _t(r["startTimeUtc"]) <= at <= _t(r["endTimeUtc"])] or done
+    if not done:
+        return None, None
+    r = max(done, key=lambda r: r["endTimeUtc"])
+    return (_t(r["endTimeUtc"]) - _t(r["startTimeUtc"])).total_seconds(), r["endTimeUtc"][:19]
+
+build_s, build_at = last_run_seconds("01_build_gold", containing=B["ran_at_utc"])
+vorder_s, vorder_at = last_run_seconds("02_vorder_write")
+if build_s is None:
+    build_s = T["total_s"]          # no completed run listed: the notebook's own record
+if vorder_s is None:
+    vorder_s = %(vorder_s)s         # no completed run listed: BUILD_LOG section 31
+print(f"01_build_gold    last completed run {build_at}: {build_s:.0f} s wall, "
+      f"of which {T['total_s']:.0f} s was DuckDB work")
+print(f"02_vorder_write  last completed run {vorder_at}: {vorder_s:.0f} s wall")
+print()
 
 def cost(cu, seconds):
     return cu * seconds / 3600 * PRICE_PER_CU_HOUR
 
 rows = [
-    ("DuckDB transform, Python 8 vCores", "measured", cu_python, build_s),
-    ("V-Order write, Spark starter pool",  "measured time, documented CU", cu_spark_starter, vorder_s),
+    ("DuckDB transform, Python 8 vCores", "measured wall, documented CU", cu_python, build_s),
+    ("V-Order write, Spark starter pool",  "measured wall, documented CU", cu_spark_starter, vorder_s),
 ]
 alt = [
     ("Same transform on Spark starter pool", "modelled: same wall time, 8 CU", cu_spark_starter, build_s),
-    ("V-Order write, Spark starter pool",    "measured time, documented CU", cu_spark_starter, vorder_s),
+    ("V-Order write, Spark starter pool",    "measured wall, documented CU", cu_spark_starter, vorder_s),
 ]
 def show(title, rr):
     print(title)
@@ -616,7 +740,9 @@ def show(title, rr):
 
 a_cuh, a_usd = show("THIS PIPELINE", rows)
 b_cuh, b_usd = show("ALTERNATIVE: transformation on Spark (modelled)", alt)
-print(f"compute saved on the transformation step: {(1 - a_cuh/b_cuh)*100:.0f}%%  "
+step_a, step_b = rows[0][2] * rows[0][3] / 3600, alt[0][2] * alt[0][3] / 3600
+print(f"transformation step: {(1 - step_a/step_b)*100:.0f}%% less compute "
+      f"({step_a:.3f} vs {step_b:.3f} CU-h); whole pipeline: {(1 - a_cuh/b_cuh)*100:.0f}%% less "
       f"({b_cuh - a_cuh:.3f} CU-h, ${b_usd - a_usd:.3f} at ${PRICE_PER_CU_HOUR}/CU-h)")
 print()
 print("Not priced, in the alternative's favour: a Warehouse T-SQL path would first copy")
@@ -666,6 +792,17 @@ running before believing any of this.
 Every script is in `github.com/sulaiman013/fabric-x-duckdb`. The full
 chronological build log, including every mistake and what it cost, is
 `BUILD_LOG.md` in the same repository.
+"""))
+
+    A(code("""
+# Leave evidence: everything printed above, saved next to the data, so a run
+# triggered from the CLI can be read back without opening the notebook.
+from datetime import datetime, timezone
+path = "/lakehouse/default/Files/readme_last_run.txt"
+with open(path, "w") as fh:
+    fh.write("README run at " + datetime.now(timezone.utc).isoformat(timespec="seconds") + chr(10) + chr(10))
+    fh.write(_LOG.getvalue())
+print("evidence written:", path)
 """))
 
     metadata = {

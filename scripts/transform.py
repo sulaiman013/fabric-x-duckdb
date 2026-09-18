@@ -77,10 +77,15 @@ def to_date(col):
 def to_ts(col):
     fmts = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M:%S.%g"]
     chain = ", ".join("try_strptime({c}, '{f}')".format(c=s(col), f=f) for f in fmts)
-    # a bare epoch integer also appears in this column
+    # A bare epoch integer also appears in this column. It must become a naive
+    # TIMESTAMP via make_timestamp, not to_timestamp: to_timestamp returns
+    # TIMESTAMPTZ, which coerces the whole CASE to TIMESTAMPTZ, and every hour
+    # and date derived from it then depends on the session's TimeZone. That
+    # made the laptop (Asia/Dhaka) and Fabric (UTC) builds disagree on epoch
+    # rows by six hours. BUILD_LOG section 40.
     return ("CASE WHEN lower(trim(coalesce({c},''))) IN {n} THEN NULL "
             "WHEN regexp_matches(trim(coalesce({c},'')), '^[0-9]{{9,11}}$') "
-            "THEN to_timestamp(TRY_CAST(trim({c}) AS BIGINT)) "
+            "THEN make_timestamp(TRY_CAST(trim({c}) AS BIGINT) * 1000000::BIGINT) "
             "ELSE coalesce({ch}, try_strptime(substr({t},1,19), '%Y-%m-%dT%H:%M:%S')) END"
             ).format(c=col, n=NULLISH, ch=chain, t=s(col))
 
@@ -243,6 +248,7 @@ def main():
     con = duckdb.connect()
     con.execute("SET memory_limit='%s'" % args.memory_limit)
     con.execute("SET preserve_insertion_order=false")
+    con.execute("SET TimeZone='UTC'")   # results must not depend on where this runs
 
     if args.source == "postgres":
         con.execute("INSTALL postgres"); con.execute("LOAD postgres")

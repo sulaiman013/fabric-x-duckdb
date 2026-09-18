@@ -16,7 +16,7 @@ OneLake using open mirroring**, and then doing something real with it.
 | Phase | What | Layer |
 | --- | --- | --- |
 | **1** | On-prem PostgreSQL to OneLake via open mirroring: initial seed plus continuous CDC from the write-ahead log | Bronze (raw, all TEXT) |
-| **2** | DuckDB: cleaning, typing, conforming, seven measured risk rules, dedupe, star schema; Spark for the V-Ordered write | Silver to Gold |
+| **2** | DuckDB on a Fabric Python notebook (8 vCores): cleaning, typing, conforming, seven measured risk rules, dedupe, star schema; Spark for the V-Ordered write | Silver to Gold |
 | **3** | Direct Lake semantic model over the gold tables: 9 tables, 8 relationships, 17 measures, verified by DAX | Semantic |
 | **4** | Fabric App: operational activities, reporting and analytics on the banking data | Application |
 
@@ -76,6 +76,7 @@ duckdb in fabric/
     ops_db.py             the five ops tables for write-back, DDL in one place
     build_ops_notebook.py generates 04_ops_ddl from that DDL (SQL token exists only on capacity)
     build_gold_notebook.py generates 01_build_gold: the DuckDB transformation as a Python notebook
+    build_probe_mirror.py generates zz_probe_mirror: checks the mirror against PostgreSQL row by row (a probe, not a step)
     build_readme_notebook.py generates 00_README: workspace documentation that measures itself
     build_report.py       generates the four-page PBIP report, live on the Direct Lake model
     bisect_measure.py     bisects a report measure against Desktop through the bridge
@@ -103,7 +104,7 @@ load_postgres.py   parallel COPY, all TEXT, LOGGED     -> landing.raw_txn (48 GB
 snapshot_to_fabric.py  DuckDB reads Postgres -> zstd parquet -> azcopy -> LandingZone
 cdc_to_fabric.py       WAL -> logical slot -> parquet + __rowMarker__ -> LandingZone
                    Fabric applies insert / update / delete to the Delta table
-transform + rules + star   DuckDB over a lakehouse shortcut to the mirror -> gold parquet
+01_build_gold.Notebook     DuckDB, Python kernel, 8 vCores, over a lakehouse shortcut to the mirror -> gold parquet
 02_vorder_write.Notebook   Spark rewrites gold as V-Ordered Delta (DuckDB cannot)
 build_semantic_model.py    Direct Lake model, 17 measures, alerts priced in analyst headcount
 ```

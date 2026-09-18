@@ -1616,3 +1616,311 @@ in place deliberately, as the evidence for the above.
 ### Still open
 
 Steps 5 onward, which need a capacity in a region where `AppBackend` is allowed.
+
+---
+
+## 40. The transformation had never run on Fabric. Now it has, and it found four bugs
+
+Writing the README notebook forced a question this log had answered without
+anyone reading the answer back: where did the gold layer actually come from?
+Section 30 built it with DuckDB on this laptop. Section 31 uploaded the parquet
+with azcopy. Only the Spark V-Order write ever ran on capacity.
+`notebooks/01_build_gold.md` described an 8-vCore Python notebook doing the
+transformation on Fabric, and it was a design document: no such notebook
+existed in the workspace and nothing had ever run it.
+
+That is the architecture this project exists to demonstrate. Documenting the
+compute savings of a run that never happened would have been the worst kind of
+README, so the notebook was built and run before a word of that section was
+written. Running it did what a real run always does: it disagreed with the
+laptop, and the disagreement was worth more than agreement would have been.
+Four defects came out of one night of measuring: two in the transformation, one
+in how it exports, and one in the mirror itself.
+
+### Building it
+
+`scripts/build_gold_notebook.py` generates `01_build_gold.Notebook` from the
+design. `transform.py`, `rules.py` and `star.py` are embedded verbatim and
+written to a temp directory at run time, so the code validated against the
+full 50,000,000 rows on the laptop is byte-for-byte the code that runs on
+capacity. Two things had to be right, and both were checked before the first
+real run rather than after:
+
+| Trap | What happens if you miss it |
+| --- | --- |
+| `%%configure` built with `%`-formatting becomes `%configure`, a line magic that does not exist | the run dies at cell 1, or silently lands on the 2-vCore default |
+| The ipynb must carry `kernel_info.name = jupyter` and `language_group = jupyter_python` | it lands on the Spark kernel, DuckDB still works on the driver, and every cost figure is wrong by 2x |
+
+The first was found the hard way: a job started with the broken cell and
+failed in twelve seconds. The generator now compiles every cell and checks the
+first cell's magic before it writes anything, because an import of a
+half-broken notebook reports success. The second was settled empirically
+rather than from documentation, which does not show the Python-kernel values:
+import, export back, and read what Fabric stored.
+
+### Run 1, measured
+
+Job `6b2085a7`, 8 vCores requested.
+
+| Measure | Value |
+| --- | --- |
+| Wall time, job start to end | **15 min 36 s** (935.8 s, what capacity bills) |
+| Count the source (`delta_scan` over the mirror shortcut) | 13.3 s for 50,000,001 rows |
+| Silver, rules, dedup, star (DuckDB) | **13 min 3 s** (782.7 s) |
+| Write nine parquet files, zstd | 30.6 s, 2.06 GB |
+| Notebook work inside the wall | 826.6 s; the other 109 s is session start and teardown |
+| Environment the notebook recorded | 8 CPUs, 67.4 GB RAM, Python 3.11.15, DuckDB 1.2.2, `spark_in_globals: false` |
+
+The last line is the direct evidence that this ran on the Python kernel and not
+on a Spark driver. Nine tables came out. Six matched the layer verified in
+section 32 to the row. Three did not:
+
+| Table | Section 32 (laptop build) | Run 1 (capacity) | Difference |
+| --- | --- | --- | --- |
+| `fact_transaction` | 49,406,790 | 49,406,792 | +2 |
+| `fact_alert` | 65,088,689 | 65,088,589 | **-100** |
+| `dim_date` | 905 | 904 | -1 |
+
+The temptation is to call that noise on fifty million rows. It is not noise.
+Every one of those numbers has a cause, and finding the causes took the rest
+of the night.
+
+### Attributing the -100: three rules moved, four did not
+
+Per-rule firings, the old layer through the semantic model against the new
+parquet read back from OneLake:
+
+| Rule | Laptop build | Run 1 | Diff |
+| --- | --- | --- | --- |
+| R02 card_not_present | 10,118,821 | 10,118,821 | 0 |
+| R03 amount_anomaly | 3,624,172 | 3,624,172 | 0 |
+| R04 odd_hour | 10,164,097 | 10,164,144 | **+47** |
+| R05 velocity | 864,949 | 864,962 | **+13** |
+| R06 new_merchant | 13,610,301 | 13,610,141 | **-160** |
+| R07 high_risk_mcc | 2,126,003 | 2,126,003 | 0 |
+| R09 declined | 24,580,346 | 24,580,346 | 0 |
+
+The four row-level rules are identical. The three that moved all depend on the
+parsed timestamp: R04 on its hour, R05 on its clock-hour bucket, R06 on its
+order within a customer-merchant group. And the one vanished date was
+2025-06-22, the old maximum. Ten rows carried it in the laptop build. Their raw
+strings in PostgreSQL are all bare epoch integers, for example `1750529113`,
+which is 2025-06-21 18:05:13 UTC.
+
+**Bug 1: the session timezone.** `to_ts()` parsed epoch strings with
+`to_timestamp()`, which returns `TIMESTAMP WITH TIME ZONE`. That coerces the
+whole CASE expression to TIMESTAMPTZ, and every hour and date derived from it
+then depends on the DuckDB session's `TimeZone`, which defaults to the
+machine's. On this laptop that is Asia/Dhaka, so 18:05 UTC became 00:05 on 22
+June. On capacity it is UTC. String-formatted timestamps were unaffected: they
+were interpreted as local time and read back as local time, a round trip. Only
+the epoch rows moved, by six hours, which is exactly the fingerprint in the
+table above. The laptop-built gold layer was also internally inconsistent
+because of it: the fact row stores `txn_ts` as the UTC instant 18:05 while its
+`date_key` points at 22 June.
+
+**Bug 2: a tie that dedup and the window break differently.** `star.py`
+scores all fifty million rows first and deduplicates afterwards, keeping the
+lowest `_mirror_row_id` of each business-key group. R06 marks the first row in
+each (customer, merchant) group with `row_number() ... ORDER BY txn_ts`. Exact
+duplicates tie on `txn_ts`, and the engine breaks the tie arbitrarily. When it
+picks the copy that dedup then drops, the group's only firing leaves with it.
+Which copy wins depends on hash-partition scheduling, so R06 differed between
+the laptop and capacity by 160 on the same rows. That is not a Fabric-versus-
+laptop difference; it is nondeterminism the laptop had all along and never got
+the chance to reveal, because the build was only ever run once.
+
+Neither cause depends on DuckDB 1.2.2 on capacity versus 1.5.5 here. Both are
+in the SQL.
+
+The fixes: `to_ts()` builds epoch rows with `make_timestamp(seconds * 1000000)`,
+a naive UTC `TIMESTAMP`, so the CASE is `TIMESTAMP` throughout and no derived
+hour or date can depend on where the code runs (verified locally under both
+`Asia/Dhaka` and `UTC`); every DuckDB connection also sets `TimeZone='UTC'`;
+R06 orders by `txn_ts, _mirror_row_id`, so the tiebreak agrees with dedup and
+the first row of a group is always the copy that survives; and the notebook
+records per-rule firings and a dedup reconciliation in `build_gold.json`, so
+two runs can be compared rule by rule. A total can hide two errors that cancel.
+This one nearly did.
+
+### Runs 2 to 4: the tie was an undercount, and the build is now deterministic
+
+| Run | Job | Wall (billed) | DuckDB work | Result |
+| --- | --- | --- | --- | --- |
+| 2, with the fixes | `71d68bc6` | 14 min 34 s | 765.6 s | `fact_alert` **65,175,479**, up 86,890; everything else unchanged |
+| 3, same code | `f9a73986` | 16 min 14 s | 776.6 s | identical to run 2 on every table and every rule |
+| 4, exporting instants (below) | `10180b28` | 14 min 55 s | 770.6 s | identical again |
+
+Rule by rule, from the parquet:
+
+| Rule | Laptop build | Run 1 | Runs 2, 3, 4 |
+| --- | --- | --- | --- |
+| R02 card_not_present | 10,118,821 | 10,118,821 | 10,118,821 |
+| R03 amount_anomaly | 3,624,172 | 3,624,172 | 3,624,172 |
+| R04 odd_hour | 10,164,097 | 10,164,144 | 10,164,144 |
+| R05 velocity | 864,949 | 864,962 | 864,962 |
+| R06 new_merchant | 13,610,301 | 13,610,141 | **13,697,031** |
+| R07 high_risk_mcc | 2,126,003 | 2,126,003 | 2,126,003 |
+| R09 declined | 24,580,346 | 24,580,346 | 24,580,346 |
+
+R04 and R05 did not move between runs 1 and 2 because run 1 was already a UTC
+session: the `make_timestamp` fix changes nothing on capacity and everything on
+a laptop in Dhaka, which is the point of it. R06 moved by exactly the amount
+the tiebreak predicts. About 1.2% of rows are exact duplicates, so roughly
+160,000 customer-merchant groups have their first row inside a duplicate pair,
+and the arbitrary tie had been handing about half of those firings to the copy
+that dedup drops. The laptop build and run 1 were both undercounting R06 by
+roughly 87,000, and disagreeing with each other by 160 on top. The
+deterministic count is also the correct one: a transaction ingested twice is
+one transaction, it is the customer's first at that merchant, and it should
+fire once, not with probability one half.
+
+The reconciliation the notebook now records settled the dedup arithmetic too:
+50,000,001 scored, 49,406,792 kept, 593,209 removed, 49,406,792 distinct parsed
+`txn_id`, and zero ids surviving more than once. Dedup collapses exactly to one
+row per `txn_id`.
+
+### Bug 3: the fixed parquet broke the Spark write
+
+The first V-Order write after the fix failed in 35 seconds with Spark's
+generic `System_Cancelled_Session_Statements_Failed`. The cause was in the
+parquet, and it was verified locally before anything was changed: with
+`to_timestamp()` gone, `txn_ts` is a naive `TIMESTAMP`, which DuckDB writes with
+`isAdjustedToUTC=false`. Spark reads that as `TIMESTAMP_NTZ`, and overwriting
+the existing Delta tables with an NTZ column needs a table feature they do not
+have; Direct Lake does not serve NTZ either. The laptop build had only ever
+worked because its accidental TIMESTAMPTZ carried `isAdjustedToUTC=true`.
+
+The producer now exports every TIMESTAMP column as TIMESTAMPTZ
+(`export_source()` in `star.py`, used by the notebook's COPY). The session is
+pinned to UTC, so the instant equals the naive value, the parquet carries
+`isAdjustedToUTC=true`, and the values are unchanged: the 20,000-row local
+build reads back the same minimum and maximum before and after, with the flag
+flipped. Run 4 wrote it, the V-Order write completed in **233 s** of wall
+time, `03_verify` in 83 s matched every table with zero orphan keys, and the
+model reframed in six seconds. One false start is on the record: a run was
+started with an unpatched notebook after a patch script aborted on its anchor,
+cancelled within a minute, and is reported by the jobs API as `Completed` with
+a 30-second wall. The README's cost cell selects the run whose window contains
+`build_gold.json`'s own timestamp for exactly that reason.
+
+### Bug 4: the mirror was wrong by two rows, and the row count could not have told you
+
+The "+2" in run 1 still needed an owner. One was the section 36 UAT insert,
+`TXN-UAT-INSERT`, which arrived after the laptop build; PostgreSQL now holds
+50,000,001 rows and every run counted the same. The other took a while.
+PostgreSQL has 49,406,791 distinct `txn_id` values, with no nulls, blanks,
+sentinels or padding; the mirror's parsed data has 49,406,792. Same row count,
+one more distinct id. A per-bucket histogram of ids (md5 of the trimmed id, five
+hex characters, about a million buckets) on both sides differed in exactly one
+bucket, and listing that bucket on both sides named the id: `TXN00000000000002`,
+row 3870725, a seed row that PostgreSQL deleted during an early probe **before
+the replication slot existed**, so no delete was ever in the WAL. The opposite
+case existed too: row 50000004, inserted in the same window, never reached the
+mirror. Two errors of opposite sign, and a row count that matched exactly. The
+model confirms it independently: Total Amount is 17,808,657,535.30 on the
+capacity build against 17,808,657,055.84 on the laptop build, a difference of
+479.46, which is that row's amount.
+
+Repairing through the source worked for one and not the other, and the way it
+failed is worth having on the record. Delete and re-insert 50000004 in
+PostgreSQL, and the replicator streamed it as CDC file 20; the mirror applied
+the insert. Re-insert and delete 3870725, and the mirror did not change. Not in
+one file (the engine collapses an insert and a delete of one key inside a batch
+to nothing), not in separate files processed in one cycle (files 21 and 22), and
+not in separate processing cycles either (files 23 and 24, each waited for). The
+mirror table's own Delta log shows what the engine did: each batch appended a
+one-record file holding the CDC copy of the key, and each delete removed exactly
+that file. A scan of the data files confirms the seed copy of 3870725 still sits
+in `tempStage/…07.parquet`, untouched, while the update of seed row 12345678 in
+the UAT was applied normally. Whatever the engine keys its merge on, it matched
+the copies the CDC path had written and never that seed copy. A row that
+predates the slot is only removable by re-seeding, which this trial does not
+have the hours for tonight.
+
+The rule this teaches is cheap to follow and expensive to skip: **create the
+replication slot before taking the snapshot**, so nothing can fall between
+them. An insert seen twice is an upsert, a delete of a row the snapshot never
+had is a no-op, and a change that falls in the gap is lost silently, behind a
+row count that agrees. `scripts/build_probe_mirror.py` generates the probe that
+finds this, and the README measures the mirror against the source figures on
+every run so the difference stays visible.
+
+State at the end of the night, for the record: PostgreSQL 50,000,001 rows and
+49,406,791 distinct ids; the mirror 50,000,002 rows and 49,406,792 distinct
+ids, the extra being row 3870725. Row 50000004 is an exact duplicate of 50000005
+and dedup removes it, so run 4's gold layer is the gold layer of the mirror as it
+stands: 49,406,792 transactions, 65,175,479 firings, 1,423,088 alerts, 2.88%.
+
+### What it costs, and the honest shape of the comparison
+
+At 8 vCores the Python kernel bills 4 CU (Microsoft Learn, *Choosing a notebook
+kernel*: 1 CU per 2 vCores). Capacity bills the session wall time, startup
+included, not the seconds the cells were busy, so the cost uses the job's wall
+time, read live from the jobs API by the README:
+
+| Step | CU | Wall | CU-hours | at $0.18/CU-h (assumed) |
+| --- | --- | --- | --- | --- |
+| DuckDB transformation, Python 8 vCores | 4 | 895 s | 0.994 | $0.18 |
+| V-Order write, Spark starter pool | 8 | 233 s | 0.518 | $0.09 |
+| **Pipeline** | | | **1.512** | **$0.27** |
+| Modelled alternative: the transformation on Spark at the same wall time | 8 | 895 s | 1.989 | $0.36 |
+| **Alternative pipeline** | | | **2.507** | **$0.45** |
+
+The transformation step costs half of the modelled alternative; the pipeline
+40% less. The alternative is modelled, not measured, and the model is tilted in
+its favour: the same wall time on a Spark starter pool at its documented 8 CU
+minimum, when a distributed engine on a job that fits one node is usually
+slower, not faster. A Warehouse T-SQL path would also need the rows copied into
+warehouse storage first, a second copy Direct Lake over the lakehouse never
+makes, and that copy is not priced at all. The rate is the one assumption in
+the table and is labelled as such in the notebook.
+
+### The README notebook, and what the report actually costs to query
+
+`00_README` sits at the workspace root, above the phase folders, and explains
+every item in the order the data flows: mirroring mechanics in plain terms and
+the fidelity finding above, the transformation, the V-Order handoff, how Direct
+Lake actually works (transcoding and framing, from Microsoft Learn rather than
+memory), the report technique, write-back, and the cost model. Its code cells
+measure rather than assert: they list the workspace live, query the mirror's
+own status and count it against the source, read `build_gold.json` and
+`verify.json` and compare them, check the run's per-rule firings against run 2,
+time the model's measures with `sempy`, and price the runs from the jobs API.
+Everything it prints is also written to `Files/readme_last_run.txt`, so a
+CLI-triggered run leaves evidence that can be read without opening the
+notebook. Three runs tonight, all clean, the last in 1 min 53 s.
+
+The latency cell answers the question the report's users would ask. Each query
+is one of the report's own measures over the full 49,406,792-row fact, three
+times in a row:
+
+| Query | Rows | Cold | Warm | Warm |
+| --- | --- | --- | --- | --- |
+| Headline KPIs, first query after the reframe | 1 | **11.18 s** | 1.59 s | 1.59 s |
+| Overview cube (2,508 cells the page ships) | 2,508 | 1.81 s | 1.36 s | 1.33 s |
+| Rules by band | 12 | 1.34 s | 1.23 s | 0.95 s |
+| Merchant category | 60 | 1.62 s | 1.26 s | 0.97 s |
+
+The eleven seconds is Direct Lake transcoding the fact's columns from the
+V-Ordered parquet into memory once; later README runs saw 6.6 s and 7.7 s for
+the same first query. After that, every page of the report is a one-second
+question against fifty million rows, and nothing was copied into a warehouse to
+make it so.
+
+### Corrections to earlier sections, for the record
+
+- Section 31 presented the V-Order write's 3 min 22 s as the Spark time of
+  Phase 2 as if that were the whole capacity cost. It was the whole capacity
+  cost only because the transformation had not run there.
+- Every earlier mention of "the 8-vCore notebook" described a plan, not an
+  event, until this section.
+- Section 32's `dim_date` of 905 rows included one date, 2025-06-22, that was
+  an artefact of this laptop's timezone. The correct count for that data is
+  904.
+- Sections 30 to 36 quote R04, R05 and R06 counts, and every total built on
+  them, from a build that was timezone-dependent and, for R06, nondeterministic
+  and undercounting. The numbers in this section supersede them.
+- Section 36's "Live change propagates: PASS" was true and incomplete. Changes
+  made after the slot propagate; the two made between the snapshot and the slot
+  did not, and no check in that section could have seen it.

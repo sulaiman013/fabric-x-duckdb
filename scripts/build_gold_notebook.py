@@ -152,7 +152,7 @@ sys.path.insert(0, SCRIPTS)
 
 from transform import silver_sql
 from rules import RULES, enriched_sql, scored_sql
-from star import build
+from star import build, export_source
 
 print("rules active:", [r[0] for r in RULES])
 """),
@@ -174,6 +174,7 @@ limit_gb = max(4, int((ENV["ram_gb"] or 16) * 0.70))
 con.execute(f"SET memory_limit='{limit_gb}GB'")
 con.execute(f"SET threads={ENV['cpu_count']}")
 con.execute("SET preserve_insertion_order=false")
+con.execute("SET TimeZone='UTC'")   # results must not depend on where this runs
 os.makedirs("/tmp/duckdb", exist_ok=True)
 con.execute("SET temp_directory='/tmp/duckdb'")
 con.execute("INSTALL delta"); con.execute("LOAD delta")
@@ -206,15 +207,54 @@ COUNTS = {}
 for t in %s:
     COUNTS[t] = con.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
     print(f"  {t:<18} {COUNTS[t]:>12,}")
+
+# Per-rule firings, so two runs can be compared rule by rule and not just in
+# total. A total can hide two errors that cancel.
+RULE_FIRINGS = dict(con.execute(
+    "SELECT rule_id, count(*) FROM fact_alert GROUP BY 1 ORDER BY 1").fetchall())
+print("rule firings:", RULE_FIRINGS)
+
+# Dedup reconciliation. The key is (txn_id, txn_amount, merchant_name, txn_ts),
+# so a txn_id that survives more than once is either a genuine business
+# difference between its copies or a defect, and it is named here rather than
+# averaged away. NULL txn_ids are counted separately: they group by the other
+# three columns and are expected.
+RECON = {
+    "scored_rows": con.execute("SELECT count(*) FROM scored").fetchone()[0],
+    "deduped_rows": con.execute("SELECT count(*) FROM deduped").fetchone()[0],
+    "distinct_txn_id_scored": con.execute(
+        "SELECT count(DISTINCT txn_id) FROM scored").fetchone()[0],
+    "null_txn_id_deduped": con.execute(
+        "SELECT count(*) FROM deduped WHERE txn_id IS NULL").fetchone()[0],
+}
+RECON["removed"] = RECON["scored_rows"] - RECON["deduped_rows"]
+RECON["multi_survivor_txn_ids"] = con.execute('''
+    SELECT count(*) FROM (SELECT txn_id FROM deduped WHERE txn_id IS NOT NULL
+                          GROUP BY txn_id HAVING count(*) > 1)''').fetchone()[0]
+RECON["multi_survivor_samples"] = []
+for (txn_id,) in con.execute('''
+        SELECT txn_id FROM deduped WHERE txn_id IS NOT NULL
+        GROUP BY txn_id HAVING count(*) > 1 ORDER BY txn_id LIMIT 10''').fetchall():
+    rows = con.execute(
+        "SELECT _mirror_row_id, txn_amount, merchant_name, txn_ts FROM deduped "
+        "WHERE txn_id = ? ORDER BY 1", [txn_id]).fetchall()
+    RECON["multi_survivor_samples"].append(
+        {"txn_id": txn_id, "rows": [[str(x) for x in r] for r in rows]})
+print(json.dumps(RECON, indent=2))
 """ % json.dumps(TABLES)),
 
         md("""
 ### Write gold as parquet
 
-Overwrites `Files/gold`. The content is deterministic, so a rerun produces the
-same bytes the laptop build did. The V-Order Delta write is deliberately left to
-Spark in `02_vorder_write`: DuckDB cannot produce V-Order, and V-Order is what
-makes Direct Lake fast.
+Overwrites `Files/gold`. The build is deterministic: timestamps are parsed as
+naive UTC regardless of the session's timezone and every window tiebreak agrees
+with dedup (BUILD_LOG section 40), so two runs over the same source produce the
+same counts, rule by rule. Timestamp columns are exported as instants
+(TIMESTAMPTZ, `isAdjustedToUTC=true`) because Spark reads a naive column as
+TIMESTAMP_NTZ, which the Delta tables and Direct Lake do not take. The V-Order
+Delta write is deliberately left to Spark
+in `02_vorder_write`: DuckDB cannot produce V-Order, and V-Order is what makes
+Direct Lake fast.
 """),
 
         code("""
@@ -225,7 +265,7 @@ t0 = time.time()
 SIZES_MB = {}
 for t in %s:
     path = f"{GOLD}/{t}.parquet"
-    con.execute(f"COPY {t} TO '{path}' (FORMAT PARQUET, COMPRESSION zstd)")
+    con.execute(f"COPY {export_source(con, t)} TO '{path}' (FORMAT PARQUET, COMPRESSION zstd)")
     SIZES_MB[t] = round(os.path.getsize(path) / 1e6, 1)
 TIMING["write_s"] = round(time.time() - t0, 1)
 TIMING["total_s"] = round(sum(TIMING.values()), 1)
@@ -253,6 +293,8 @@ SUMMARY = {
     "source_rows": SOURCE_ROWS,
     "timing_s": TIMING,
     "counts": COUNTS,
+    "rule_firings": RULE_FIRINGS,
+    "recon": RECON,
     "gold_parquet_mb": SIZES_MB,
     "cu": %d / 2,
     "cu_seconds": round(%d / 2 * TIMING["total_s"], 1),
