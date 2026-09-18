@@ -5,13 +5,15 @@
 
 Shape
 -----
-A thin report, live connected to `fincrime_model` in Fabric. One page per
-subject, each a single HTML Content visual filling the whole 1600x900 canvas,
-fed by one report-level measure carrying both its data and the renderer.
+A thin report, live connected to `fincrime_model` in Fabric. Every page carries
+two visuals: a native page navigator across the top, and below it one HTML
+Content visual fed by a report-level measure that holds both its data and the
+renderer.
 
-Navigation is Power BI's own page tabs. An HTML visual cannot drive page
-navigation, and a native page navigator would have to sit on top of a
-full-bleed visual, so the tabs are the honest answer.
+Navigation has to be native. An HTML visual has no handle on IVisualHost, so it
+cannot switch pages no matter what JavaScript is injected into it. Rather than
+float a navigator over the content, each page reserves a strip for it and the
+content visual starts below.
 
 Why report-level measures
 -------------------------
@@ -60,14 +62,33 @@ MODEL_ID = "cb8a25d5-76aa-4698-9a25-1e8646809aaa"
 
 VISUAL = "htmlContent443BE3AD55E043BF878BED274D3A6855"
 CANVAS_W, CANVAS_H = 1600, 900
+
+# An HTML visual cannot navigate pages: it has no handle on IVisualHost, so no
+# amount of injected JavaScript will switch a tab. Navigation therefore has to
+# be a native visual, and the page reserves a strip for it rather than letting
+# it float over content.
+NAV_H = 54
 ENTITY = "fact_transaction"
 
+# Theme colours as hex, because Power BI object properties do not take oklch.
+# These track the renderer tokens: ground, surface, ink, accent, accent-weak.
+C_SURFACE = "#FFFFFF"
+C_GROUND = "#F2F8F0"
+C_INK = "#1F2A22"
+C_INK2 = "#5A6A5E"
+C_ACCENT = "#1F8A3B"
+C_ACCENT_WEAK = "#CFEBD5"
+C_LINE = "#DBE3D9"
+
 # page id, tab label, measure name, generated inline dax file
+# Order is the reading order, and the first entry is the landing page. The
+# guide sits LAST: a reader opening the report wants the numbers, and sends
+# themselves to the guide when something needs explaining.
 PAGES = [
-    ("Guide", "Guide", "Guide", "guide-inline.dax"),
     ("Overview", "Overview", "Financial Crime Overview", "overview-inline.dax"),
     ("Rules", "Rule effectiveness", "Rule Effectiveness", "rules-inline.dax"),
     ("Risk", "Risk and exposure", "Risk and Exposure", "risk-inline.dax"),
+    ("Guide", "Guide", "Guide", "guide-inline.dax"),
 ]
 
 JUNCTION = os.path.join(os.path.expanduser("~"), "pbip", "fincrime")
@@ -128,6 +149,72 @@ def desktop_exe():
         if os.path.exists(pat):
             return pat
     return None
+
+
+def lit(v):
+    return {"expr": {"Literal": {"Value": v}}}
+
+
+def color(hex_):
+    return {"solid": {"color": lit("'%s'" % hex_)}}
+
+
+def page_navigator(vid):
+    """A native page navigator, styled to match the renderer.
+
+    Selected and default states are set explicitly. Left to itself the
+    navigator inherits the base theme and lands in Power BI blue next to a sage
+    and green page, which looks like two reports stapled together.
+    """
+    def txt(sel, col, bold):
+        return {"properties": {"fontSize": lit("11D"),
+                               "fontColor": color(col),
+                               "bold": lit("true" if bold else "false"),
+                               "fontFamily": lit("'Segoe UI'")},
+                "selector": {"id": sel}}
+
+    def fill(sel, col):
+        return {"properties": {"fillColor": color(col),
+                               "transparency": lit("0D")},
+                "selector": {"id": sel}}
+
+    return {
+        "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.11.0/schema.json",
+        "name": vid,
+        "position": {"x": 16, "y": 8, "z": 9000,
+                     "width": CANVAS_W - 32, "height": NAV_H - 14,
+                     "tabOrder": 9000},
+        "visual": {
+            "visualType": "pageNavigator",
+            "objects": {
+                "pages": [{"properties": {
+                    "showByDefault": lit("true"),
+                    "showHiddenPages": lit("false"),
+                    "showTooltipPages": lit("false"),
+                }}],
+                "text": [txt("default", C_INK2, False),
+                         txt("selected", "#14532D", True),
+                         txt("hover", C_INK, False)],
+                "fill": [fill("default", C_SURFACE),
+                         fill("selected", C_ACCENT_WEAK),
+                         fill("hover", C_GROUND)],
+                "outline": [{"properties": {
+                    "lineColor": color(C_LINE),
+                    "weight": lit("1D"),
+                    "transparency": lit("0D"),
+                }, "selector": {"id": "default"}},
+                    {"properties": {
+                        "lineColor": color(C_ACCENT),
+                        "weight": lit("1D"),
+                        "transparency": lit("0D"),
+                    }, "selector": {"id": "selected"}}],
+                "shape": [{"properties": {"roundedCornerRadius": lit("7D")}}],
+                "padding": [{"properties": {"top": lit("6D"), "bottom": lit("6D"),
+                                            "left": lit("14D"), "right": lit("14D")}}],
+            },
+            "drillFilterOtherVisuals": True,
+        },
+    }
 
 
 def main():
@@ -258,6 +345,10 @@ def main():
             "displayOption": "FitToPage",
             "height": CANVAS_H,
             "width": CANVAS_W,
+            "objects": {"background": [{"properties": {
+                "color": color(C_SURFACE),
+                "transparency": lit("0D"),
+            }}]},
         })
 
         # Deterministic per page. A fresh uuid per build left the previous
@@ -272,8 +363,9 @@ def main():
         write(os.path.join(d, "pages", pid, "visuals", vid, "visual.json"), {
             "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.11.0/schema.json",
             "name": vid,
-            "position": {"x": 0, "y": 0, "z": 0,
-                         "width": CANVAS_W, "height": CANVAS_H, "tabOrder": 0},
+            "position": {"x": 0, "y": NAV_H, "z": 0,
+                         "width": CANVAS_W, "height": CANVAS_H - NAV_H,
+                         "tabOrder": 0},
             "visual": {
                 "visualType": VISUAL,
                 "query": {"queryState": {"content": {"projections": [{
@@ -291,6 +383,10 @@ def main():
             },
         })
 
+        nav_id = ("fcn" + pid.lower()).ljust(20, "0")[:20]
+        write(os.path.join(d, "pages", pid, "visuals", nav_id, "visual.json"),
+              page_navigator(nav_id))
+
     write(os.path.join(OUT, ".gitignore"),
           "**/.pbi/localSettings.json\n**/.pbi/cache.abf\n", raw=True)
 
@@ -299,15 +395,16 @@ def main():
     for pid, _l, _m, _f in PAGES:
         vdir = os.path.join(d, "pages", pid, "visuals")
         nvis = len(os.listdir(vdir))
-        if nvis != 1:
-            raise SystemExit("REFUSED: page %s has %d visual folders. Every one "
-                             "of them renders, stacked." % (pid, nvis))
+        if nvis != 2:
+            raise SystemExit("REFUSED: page %s has %d visual folders, expected 2 "
+                             "(content + navigator). Every folder renders, and "
+                             "stray ones stack on top of the page." % (pid, nvis))
 
     n = sum(len(f) for _, _, f in os.walk(OUT))
     print()
     print("wrote %s" % os.path.normpath(OUT))
-    print("  %d files, canvas %dx%d, %d pages" % (n, CANVAS_W, CANVAS_H,
-                                                  len(PAGES)))
+    print("  %d files, canvas %dx%d, %d pages, %dpx nav strip"
+          % (n, CANVAS_W, CANVAS_H, len(PAGES), NAV_H))
     longest = max(
         (len(os.path.join(r, f)) for r, _, fs in os.walk(OUT) for f in fs),
         default=0)
