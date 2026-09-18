@@ -605,7 +605,55 @@ Two defects fixed before the replicator ever ran:
 
 ---
 
-## 23. Current state
+## 23. CDC verified at the source, and the synchronous_commit trap
+
+Created the slot **before** exporting the seed, so any change made during the
+export is captured and there is no gap between baseline and stream:
+
+```sql
+SELECT pg_create_logical_replication_slot('fabric_cdc', 'test_decoding');
+```
+
+The first probe then returned **zero changes** despite an INSERT, an UPDATE and
+a DELETE having just been committed. A non-consuming
+`pg_logical_slot_peek_changes` a moment later showed all of them, and a freshly
+inserted row did *not* raise the peek count.
+
+**Cause: `synchronous_commit = off`**, set earlier to speed up the bulk load.
+With asynchronous commit a transaction returns to the client *before* its WAL is
+flushed to disk, and logical decoding only reads flushed WAL. So changes exist
+but are invisible to the slot for a short window.
+
+This is a nasty failure mode for CDC because it is intermittent and silent: a
+poll that happens to run inside that window sees nothing and looks exactly like
+"no changes occurred". The bulk load was finished, so the setting was reverted:
+
+```sql
+ALTER SYSTEM SET synchronous_commit = 'on';
+```
+
+With that fixed, all three operations decode correctly:
+
+| Operation | `__rowMarker__` | Payload emitted |
+| --- | --- | --- |
+| INSERT | `0` | full row |
+| UPDATE | `1` | full row with new values |
+| DELETE | `2` | key columns only, as the spec allows |
+
+The messy data also survives decoding intact. A probe value of
+`MERCHANT, "quoted", 1,234.50` came back through the parser byte for byte,
+commas and double quotes included, which is exactly what the parser tests in
+section 22 were written to guarantee.
+
+Table returned to exactly 50,000,000 rows after the probe rows were removed.
+
+Note: the elevated restart for `shared_buffers = 8 GB` was declined at the UAC
+prompt, so PostgreSQL is still running with the stock 128 MB. Not a blocker,
+since the export is DuckDB-side and previously ran at 151,331 rows/s.
+
+---
+
+## 24. Current state
 
 **Done**
 
