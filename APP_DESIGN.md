@@ -1,4 +1,4 @@
-# Financial Crime Operations — target application design
+# Financial Crime Operations: target application design
 
 The end product this whole pipeline exists to serve. Designed first, deliberately,
 so the star schema in Phase 2 is shaped by what the application actually needs
@@ -11,12 +11,12 @@ rather than by what happened to be convenient in the source.
 A retail bank's financial crime function has to do four things every day, on the
 same transaction stream:
 
-1. **Triage alerts** — something scored high; is it fraud or noise?
-2. **Work cases** — a customer disputed a charge; move it through to resolution
+1. **Triage alerts**: something scored high; is it fraud or noise?
+2. **Work cases**: a customer disputed a charge; move it through to resolution
    inside a regulatory clock.
-3. **Keep KYC current** — reviews expire; expired reviews on high-risk customers
+3. **Keep KYC current**: reviews expire; expired reviews on high-risk customers
    are a regulatory finding.
-4. **Prove the function works** — alert volumes, false-positive rates, rule
+4. **Prove the function works**: alert volumes, false-positive rates, rule
    effectiveness, SLA breaches, exposure.
 
 Points 1-3 are **operational** (people take actions, state changes). Point 4 is
@@ -78,7 +78,7 @@ and a four-eyes confirmation step.
 | **Risk and exposure** | Risk-score distribution, cross-border and card-not-present exposure, value at risk by segment |
 | **Merchant and channel risk** | Concentration, high-risk MCCs, terminal and acquirer outliers |
 | **Customer risk** | Risk-rating mix, KYC currency, PEP/sanctions population, exposure by segment |
-| **Data trust** | Completeness, validity and duplicate rates by source system — genuinely real in this data |
+| **Data trust** | Completeness, validity and duplicate rates by source system, genuinely real in this data |
 
 ---
 
@@ -105,7 +105,7 @@ Shaped to serve section 3 and 4, not to mirror the source.
 | `dim_merchant` | merchant columns | MCC conformed, high-risk flag |
 | `dim_channel` | channel + entry mode | the 34 spellings of `txn_type` collapse here |
 | `dim_date` | generated | fiscal, weekday, holiday |
-| `dim_time` | generated | hour buckets — required for the odd-hour signal |
+| `dim_time` | generated | hour buckets, required for the odd-hour signal |
 | `dim_currency` | currency columns | with cross-border flag |
 | `dim_country` | conformed from the 31 spellings of Malaysia | |
 | `dim_risk_rule` | defined in Phase 2 | rule id, description, weight, owner |
@@ -123,8 +123,8 @@ The source data has **no cross-column correlations**. Measured on the raw table:
 
 | Check | Result |
 | --- | --- |
-| `fraud_score` by channel | 29.9 to 31.2 across every channel — flat |
-| `txn_amount` by merchant category | 445 to 462 across every category — flat |
+| `fraud_score` by channel | 29.9 to 31.2 across every channel, flat |
+| `txn_amount` by merchant category | 445 to 462 across every category, flat |
 
 So the supplied `fraud_score` column is noise and is **deliberately not used**.
 Any dashboard built on it would show fraud spread perfectly evenly across every
@@ -185,8 +185,8 @@ Stated plainly, because a portfolio piece that blurs this is worse than useless.
 
 **Genuinely present in the source data**
 
-- transaction amount distribution — log-skewed with a realistic long tail
-- customer and merchant concentration — deliberately skewed populations
+- transaction amount distribution, log-skewed with a realistic long tail
+- customer and merchant concentration, deliberately skewed populations
 - 593,209 exact duplicate rows
 - 18.4% mess rate, five competing date formats, 31 spellings of Malaysia
 - NULL versus empty-string distinction, preserved end to end
@@ -201,8 +201,8 @@ Stated plainly, because a portfolio piece that blurs this is worse than useless.
 
 **Deliberately unused**
 
-- the supplied `fraud_score`, `aml_score`, `fraud_rule_hit` columns — uncorrelated noise
-- `balance_before` / `balance_after` as a balance history — they do not form a
+- the supplied `fraud_score`, `aml_score`, `fraud_rule_hit` columns, uncorrelated noise
+- `balance_before` / `balance_after` as a balance history, they do not form a
   coherent per-account series
 
 ---
@@ -211,14 +211,14 @@ Stated plainly, because a portfolio piece that blurs this is worse than useless.
 
 The schema above is the specification for the DuckDB work:
 
-1. **Clean** — trim, collapse null-lookalikes to real NULL, parse five date
+1. **Clean**: trim, collapse null-lookalikes to real NULL, parse five date
    formats, strip currency symbols and parenthesised negatives, conform casing
-2. **Conform** — 31 country spellings to one code, 34 `txn_type` values to a
+2. **Conform**: 31 country spellings to one code, 34 `txn_type` values to a
    small set, MCC to category
-3. **Deduplicate** — 593,209 exact duplicates, resolved using `_mirror_row_id`
-4. **Derive** — the nine rules and `risk_score`
-5. **Model** — build the facts and dimensions above
-6. **Serve** — write gold Delta tables for the Direct Lake model in Phase 3
+3. **Deduplicate**: 593,209 exact duplicates, resolved using `_mirror_row_id`
+4. **Derive**: the nine rules and `risk_score`
+5. **Model**: build the facts and dimensions above
+6. **Serve**: write gold Delta tables for the Direct Lake model in Phase 3
 
 Note from the Phase 2 research: DuckDB Delta writes are INSERT-only, so any
 merge or SCD logic goes through **delta-rs**, and V-Order is not available on the

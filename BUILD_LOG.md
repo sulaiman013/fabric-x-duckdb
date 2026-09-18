@@ -30,11 +30,11 @@ which cannot hold a dataset this size. Everything large had to go to `D:`.
 
 The request started at **1 billion rows** and moved twice:
 
-1. **1B rows** — flagged that this meant ~100 GB CSV plus ~100 GB in Postgres,
+1. **1B rows**: flagged that this meant ~100 GB CSV plus ~100 GB in Postgres,
    and that `C:` could not hold either.
-2. **250M rows** — then the shape changed: no star schema, no transformation,
+2. **250M rows**: then the shape changed: no star schema, no transformation,
    a single wide flat table of ~100 columns of raw messy data.
-3. **50M rows** — final. At 100 columns this is ~45 GB CSV, which fits
+3. **50M rows**: final. At 100 columns this is ~45 GB CSV, which fits
    comfortably on `D:`.
 
 Domain and mess profile were chosen by the user:
@@ -88,7 +88,7 @@ written as `%%` stayed as `%%` and produced invalid SQL. Fixed to single `%`.
 `INSERT INTO chunk_tmp SELECT * FROM chunk_tmp USING SAMPLE ...` reads and
 writes the same table. Replaced with a staged `dup_tmp` table.
 
-### 5.3 Entity incoherence — the important one
+### 5.3 Entity incoherence: the important one
 
 The first 50k smoke test produced a row where:
 
@@ -158,7 +158,7 @@ touched) and pushed to `https://github.com/sulaiman013/fabric-x-duckdb`.
 
 **Near-miss:** the first `git add -A` staged a file named
 `fabric id and pass.md` that was sitting in this folder. The target repo is
-**public**. Caught before any commit or push — nothing left the machine.
+**public**. Caught before any commit or push. Nothing left the machine.
 
 Response:
 - unstaged everything, staged the six intended files explicitly
@@ -242,15 +242,15 @@ and password, since `-u`/`-p` are a service principal client ID and secret).
 
 Target workspace: **`fabric duckdb`** (`7e0f6e0d-...`), which already contained:
 
-- `sulaiman-postgres.MirroredDatabase` (`5069602e-...`) — status **Running**
-- `sulaiman-postgres.SQLEndpoint` — provisioned
+- `sulaiman-postgres.MirroredDatabase` (`5069602e-...`), status **Running**
+- `sulaiman-postgres.SQLEndpoint`, provisioned
 
 Pulled the authoritative open-mirroring spec from Microsoft Learn rather than
 assuming. The rules that matter:
 
 1. `_metadata.json` in each table folder declaring `keyColumns`. Without it,
    Fabric will not ingest.
-2. Data files named `00000000000000000001.parquet` — 20 digits, zero padded,
+2. Data files named `00000000000000000001.parquet`, 20 digits, zero padded,
    continuously increasing.
 3. `__rowMarker__` must be the **final column**: `0`=insert, `1`=update,
    `2`=delete, `4`=upsert.
@@ -268,14 +268,14 @@ This took several attempts and is worth recording.
 
 | Attempt | Result |
 | --- | --- |
-| `fab cp` local to MirroredDatabase | **Fails** — `Source and destination must be of the same type` |
-| `fab api -A storage` with a full OneLake URL | **Fails** — `artifact type is unknown` |
-| `fab api -A storage` with `ws.Workspace/item.MirroredDatabase` | **Fails** — resolves internally to `MountedRelationalDatabase`, not found |
-| `fab api -A storage` with `{workspaceId}/{itemId}` GUIDs | **Works** — 200, lists and deletes fine |
+| `fab cp` local to MirroredDatabase | **Fails**: `Source and destination must be of the same type` |
+| `fab api -A storage` with a full OneLake URL | **Fails**: `artifact type is unknown` |
+| `fab api -A storage` with `ws.Workspace/item.MirroredDatabase` | **Fails**: resolves internally to `MountedRelationalDatabase`, not found |
+| `fab api -A storage` with `{workspaceId}/{itemId}` GUIDs | **Works**: 200, lists and deletes fine |
 | `fab api` three-step ADLS create/append/flush | Create 201, append 202, but **flush fails**; `-i` does not send binary file contents |
 | `fab cp` to a Lakehouse | **Works**, byte-exact (627 = 627) |
-| `fab cp` of a 216 MB file | **Times out after 246s** — single-shot upload, no chunking |
-| **azcopy** with `--trusted-microsoft-suffixes` | **Works** — 216 MB in **40s** |
+| `fab cp` of a 216 MB file | **Times out after 246s**: single-shot upload, no chunking |
+| **azcopy** with `--trusted-microsoft-suffixes` | **Works**: 216 MB in **40s** |
 
 Parquet compression measured on one 931.8 MB CSV chunk:
 
@@ -317,7 +317,7 @@ writing one file per thread with `PER_THREAD_OUTPUT`, then renaming to the
 
 First trial run (200k rows) uploaded cleanly, azcopy reported
 `Final Job Status: Completed` with zero failures, and the file on OneLake
-measured **46,541,460 bytes — byte-identical to local**. Fabric still failed:
+measured **46,541,460 bytes, byte-identical to local**. Fabric still failed:
 
 ```
 We encountered an error while opening the Parquet file
@@ -758,7 +758,7 @@ This one cost a full re-upload.
 
 The earlier latched `PathNotFound` error was cleared by stopping and starting
 the mirroring engine, and that looked like a cheap, clever recovery. It worked
-because **no table had been materialised yet** — the engine simply re-read the
+because **no table had been materialised yet**: the engine simply re-read the
 landing zone and built one.
 
 Using the same trick to clear the `SchemaMergeFailure` **deleted the
@@ -1338,3 +1338,75 @@ Every functional check passed on live evidence. Three defects were found, all
 documentation or presentation rather than pipeline, and all fixed: a stale
 demo, a stale README inventory, and one README instruction that would have
 broken CDC for a reader.
+
+## 37. Phase 4 research: the Fabric App is region-blocked, and the probe proved it
+
+Researched how to build a Fabric App, then stopped reading and probed the
+tenant, because a note in memory from June said East US was blocked for Fabric
+Apps and East US is now supported. Region tables go stale.
+
+### The probe
+
+Four `POST /workspaces/{ws}/items` calls with different type names:
+
+| Type | Response |
+| --- | --- |
+| `App` | 400 `InvalidItemType` |
+| `FabricApp` | 400 `InvalidItemType` |
+| `DataApp` | 400 `InvalidItemType` |
+| **`AppBackend`** | **403 `FeatureNotAvailable`** |
+
+That contrast is the entire diagnostic, and it is worth more than the docs. Three
+invented names are rejected as *invalid types*. The fourth is recognised as a
+real type and then refused as an *unavailable feature*. So the item type is
+`AppBackend`, the name is right, and something other than naming is refusing it.
+
+### Ruling out the tenant settings
+
+Both settings the docs name as prerequisites were already on:
+
+| Setting | State |
+| --- | --- |
+| `AppBackendTenant` (Enable Fabric App Items, preview) | enabled |
+| `DatasetExecuteQueries` (Semantic Model Execute Queries REST API) | enabled |
+
+So the 403 is not a tenant setting. It is the region. `capacityRegion` is
+**UK South**, which the published table lists as "Not available: Fabric App
+(preview)". Both capacities on the tenant are UK South, and the trial capacity
+was created today, so starting a fresh trial would land in UK South again: trial
+region follows tenant home region. There is no free way around it.
+
+### What is available here, also by probe
+
+| Type | Response |
+| --- | --- |
+| `UserDataFunction` | 201 Created |
+| `SQLDatabase` | 202 Accepted |
+
+Both probe items were deleted immediately after the test. This is the finding
+that matters, because the write-back design in `APP_DESIGN.md` section 9 needs
+exactly those two item types and they work here today. The operational half of
+Phase 4 is not blocked. Only the application shell is.
+
+### The consequence, which turned out to be good news
+
+The `dataapp` template reads its semantic model over the Execute DAX Queries
+REST API. That is an authenticated network call, not a OneLake-local read, so
+the app does not have to sit in the same region as the data. An `AppBackend` in
+a supported region can query `fincrime_model` in UK South.
+
+Only the thin shell moves. The 49.4M-row gold layer, the Direct Lake model and
+the mirror stay where they are, and the 29-minute seed is never repeated.
+
+### Plan
+
+Written up in `FABRIC_APP_PLAN.md`: nine steps, of which steps 1 to 4 (Fabric
+SQL database, User Data Functions, proving write-back, confirming the automatic
+OneLake mirror) are unblocked and can start now. Step 5 is a capacity in a
+supported region and is the only step gated on a decision.
+
+The part worth building is the closed loop. A Fabric SQL database auto-mirrors
+to OneLake as Delta with no configuration, so a disposition written through a
+User Data Function becomes data in the lake, which the next gold rebuild can
+join back to `fact_alert`. Alert precision then stops being simulated against a
+seeded label and starts being measured against what analysts actually decided.

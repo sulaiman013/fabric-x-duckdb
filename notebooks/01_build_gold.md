@@ -10,7 +10,7 @@ is already shortcut into it at `Tables/raw_txn`.
 
 ---
 
-## Cell 1 — compute
+## Cell 1: compute
 
 ```python
 %%configure
@@ -27,7 +27,7 @@ engines start hitting out-of-memory at lower vCore counts. This dataset is
 
 ---
 
-## Cell 2 — dependencies
+## Cell 2: dependencies
 
 ```python
 %pip install --quiet duckdb
@@ -41,7 +41,7 @@ an explicit install avoids surprises when the runtime image moves.
 
 ---
 
-## Cell 3 — bring the validated logic in
+## Cell 3: bring the validated logic in
 
 ```python
 import sys, os
@@ -57,7 +57,7 @@ print("rules active:", [r[0] for r in RULES])
 
 ---
 
-## Cell 4 — read the mirror through the shortcut
+## Cell 4: read the mirror through the shortcut
 
 ```python
 con = duckdb.connect()
@@ -79,7 +79,7 @@ the mirror.
 
 ---
 
-## Cell 5 — build
+## Cell 5: build
 
 ```python
 t0 = time.time()
@@ -93,7 +93,7 @@ for t in ("fact_transaction","fact_alert","dim_customer","dim_merchant",
 
 ---
 
-## Cell 6 — write gold as Parquet
+## Cell 6: write gold as Parquet
 
 ```python
 GOLD = "/lakehouse/default/Files/gold"
@@ -107,7 +107,7 @@ print("gold parquet written")
 
 ---
 
-## Cell 7 — the V-Order handoff
+## Cell 7: the V-Order handoff
 
 DuckDB cannot produce V-Order, and V-Order is what makes a Direct Lake model
 fast. DuckDB also writes Delta **INSERT-only**, with no MERGE and no schema
