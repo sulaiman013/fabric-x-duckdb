@@ -8,6 +8,39 @@ nobody has cleaned up after them.
 
 **50,000,000 rows. 100 columns. Every column is text. Nothing is cleaned.**
 
+## What this project is
+
+An end-to-end demonstration of getting **on-premises PostgreSQL data into Fabric
+OneLake using open mirroring**, and then doing something real with it.
+
+| Phase | What | Layer |
+| --- | --- | --- |
+| **1** | On-prem PostgreSQL to OneLake via open mirroring: initial seed plus continuous CDC from the write-ahead log | Bronze (raw, all TEXT) |
+| **2** | Fabric Python notebook (8 vCores) running DuckDB: cleaning, typing, conforming, star schema | Silver to Gold |
+| **3** | Direct Lake semantic model over the gold tables | Semantic |
+| **4** | Fabric App: operational activities, reporting and analytics on the banking data | Application |
+
+Each phase is deliberately constrained so the next one has something honest to
+do. The bronze layer is text-only and genuinely dirty, which is what makes the
+Phase 2 cleaning work meaningful rather than decorative. The surrogate key added
+for mirroring (`_mirror_row_id`) is also what makes the 593,209 exact duplicate
+rows resolvable downstream, since no subset of the 100 business columns is
+unique.
+
+### Why open mirroring, and why a seed plus CDC
+
+Fabric's **native** database mirroring connects directly to the source with no
+file transfer, but it supports Azure SQL Database, SQL Server, Cosmos DB, Oracle,
+SAP and **Azure Database for PostgreSQL**. A PostgreSQL instance on `localhost`
+is not reachable by Fabric and is not a supported native source, so **open
+mirroring** is the correct mechanism: the publisher writes change files into a
+landing zone and Fabric's replication engine applies them to Delta tables.
+
+Mirroring is seed-then-stream. The seed establishes the baseline; CDC keeps it
+live. A change feed with no seed would leave Fabric holding only rows that
+changed after the slot was created, which is not a mirror and gives Phase 2
+nothing to model.
+
 ## Why nothing is transformed
 
 This is a landing zone, not a model. The extract contains values like
