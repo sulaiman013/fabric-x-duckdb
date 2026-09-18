@@ -254,7 +254,11 @@ def main():
         src = "delta_scan('%s')" % args.path
 
     if args.limit:
-        src = "(SELECT * FROM %s LIMIT %d)" % (src, args.limit)
+        # Deterministic slice. LIMIT without ORDER BY is nondeterministic over a
+        # parallel scan: two runs returned samples differing by 23,008 duplicate
+        # txn_ids, which made every measurement irreproducible. Ranging over the
+        # surrogate key gives the same rows every time.
+        src = "(SELECT * FROM %s WHERE _mirror_row_id <= %d)" % (src, args.limit)
 
     t0 = time.time()
     con.execute("CREATE OR REPLACE TABLE silver AS " + silver_sql(src))
