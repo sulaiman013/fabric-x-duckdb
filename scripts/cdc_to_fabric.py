@@ -227,14 +227,42 @@ def list_landing(args):
     return names
 
 
+def seq_state_path(args):
+    return os.path.join(args.work, "%s.seq" % args.target_table)
+
+
+def read_seq_state(args):
+    try:
+        with open(seq_state_path(args), "r", encoding="utf-8") as fh:
+            return int(fh.read().strip())
+    except Exception:
+        return 0
+
+
+def write_seq_state(args, seq):
+    os.makedirs(args.work, exist_ok=True)
+    with open(seq_state_path(args), "w", encoding="utf-8") as fh:
+        fh.write(str(seq))
+
+
 def next_sequence(args):
-    names = list_landing(args)
+    """
+    Next file number in the 20-digit sequence.
+
+    Fabric MOVES processed files out of the table folder into _ProcessedFiles /
+    _FilesReadyToDelete, so the folder is not a reliable record of how far the
+    sequence has got. The docs say the most recent file is deliberately left
+    behind for publishers to read, but relying on that alone means a single
+    deletion or a cleanup pass silently resets the sequence to 1 and starts
+    overwriting. So take the high-water mark of what is remote AND what this
+    process last wrote locally.
+    """
     best = 0
-    for nme in names:
+    for nme in list_landing(args):
         stem = nme.split(".")[0]
         if stem.isdigit():
             best = max(best, int(stem))
-    return best + 1
+    return max(best, read_seq_state(args)) + 1
 
 
 def azcopy_put(args, local, remote):
@@ -332,6 +360,7 @@ def run(args):
                 print("  %s  %5d changes  (ins=%s upd=%s del=%s)  %.1f KB"
                       % (name, len(recs), counts.get("0", 0), counts.get("1", 0),
                          counts.get("2", 0), size / 1024.0))
+                write_seq_state(args, seq)
                 seq += 1
                 os.remove(local)
             else:

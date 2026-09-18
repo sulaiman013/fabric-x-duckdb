@@ -23,12 +23,17 @@ https://learn.microsoft.com/fabric/mirroring/open-mirroring-landing-zone-format)
 * Parquet needs valid logical/physical type pairs. Not a concern here: all 100
   columns are strings, which sidesteps the DATE-must-be-INT32 class of problem.
 
-Note on duplicate keys
-----------------------
-`txn_id` contains deliberate duplicates (~1.18%). That is safe for this initial
-snapshot because inserts do not deduplicate, but it makes `txn_id` unsuitable as
-a key for later CDC upserts, where an update against a duplicated key would be
-ambiguous. Choose a genuinely unique key before enabling incremental changes.
+Key column
+----------
+`keyColumns` defaults to `_mirror_row_id`, the surrogate identity column added
+to the landing table. A natural key is impossible here: `txn_id` has 593,209
+deliberate duplicates, and because those duplicates are exact full-row copies,
+no subset of the 100 business columns is unique either. Without a unique key an
+UPDATE cannot be matched to a single row on the Fabric side, and PostgreSQL
+would emit nothing for UPDATE/DELETE in the first place.
+
+This seed establishes the mirror baseline. `cdc_to_fabric.py` then keeps it live
+by streaming WAL changes as numbered files continuing from this sequence.
 """
 
 import argparse
@@ -152,8 +157,10 @@ def main():
     p.add_argument("--table", default="raw_txn")
     p.add_argument("--target-table", default="raw_txn",
                    help="folder name under LandingZone/")
-    p.add_argument("--key-columns", default="txn_id",
-                   help="comma separated, written to _metadata.json")
+    p.add_argument("--key-columns", default="_mirror_row_id",
+                   help="comma separated, written to _metadata.json. Must be "
+                        "genuinely unique: txn_id is NOT, it has 593,209 "
+                        "deliberate duplicates.")
     p.add_argument("--host", default="localhost")
     p.add_argument("--port", type=int, default=5432)
     p.add_argument("--dbname", default="postgres")
