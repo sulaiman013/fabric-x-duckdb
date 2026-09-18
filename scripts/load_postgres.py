@@ -188,8 +188,20 @@ def main():
                    help="keep the existing table and skip files already loaded")
     args = p.parse_args()
 
+    # Prefer libpq's own credential resolution (%APPDATA%\postgresql\pgpass.conf
+    # on Windows, ~/.pgpass elsewhere). Only fall back to prompting if a
+    # passwordless connect actually fails, so unattended runs never block on a
+    # hidden prompt.
     if not args.password:
-        args.password = getpass.getpass("Postgres password for user '%s': " % args.user)
+        try:
+            connect(args).close()
+        except psycopg2.OperationalError:
+            if not sys.stdin.isatty():
+                print("No password available. Set PGPASSWORD, pass --password, "
+                      "or create %APPDATA%\\postgresql\\pgpass.conf")
+                return 2
+            args.password = getpass.getpass(
+                "Postgres password for user '%s': " % args.user)
 
     files = sorted(glob.glob(os.path.join(args.path, "txn_part_*.csv")))
     if not files:
@@ -208,6 +220,10 @@ def main():
     print("-" * 74)
 
     con = connect(args)
+    # Set autocommit before issuing any statement. psycopg2 opens an implicit
+    # transaction on the first execute(), and set_session/autocommit cannot be
+    # changed once a transaction is open.
+    con.autocommit = True
     ver = con.cursor()
     ver.execute("SELECT version()")
     print(ver.fetchone()[0].split(",")[0])
