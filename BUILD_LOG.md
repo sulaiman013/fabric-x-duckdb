@@ -382,33 +382,188 @@ The full chain is therefore proven:
 
 ---
 
-## 14. Current state
+## 14. Full-scale snapshot export and upload
+
+Exported the whole table from PostgreSQL to mirroring-ready Parquet:
+
+| Metric | Value |
+| --- | --- |
+| Files | 16 (one per DuckDB thread) |
+| Size | **10.5 GB** zstd (from 48 GB in Postgres) |
+| Elapsed | **5.5 min** |
+| Throughput | **151,331 rows/s** |
+
+The earlier 41,780 rows/s figure was a measurement artifact: the trial run used
+`USING SAMPLE`, which forces a full scan of all 50M rows to draw the sample.
+
+Upload reached **36% at ~9.4 MB/s** before being deliberately stopped, for the
+reason in the next section. Note that `contentLength` reads 0 for every file
+while azcopy is mid-flight: it uploads all 16 in parallel via ADLS
+append/flush, and nothing is visible until each file's final flush. That looks
+identical to a stall and is not one. Progress is only visible in azcopy's own
+log (`~/.azcopy/*.log`).
+
+---
+
+## 15. Direction change: CDC, not a bulk copy
+
+The approach was challenged, correctly: a 10.5 GB one-shot upload is a copy, not
+a mirror. Checked the documentation rather than arguing from memory. What it
+establishes:
+
+* **Open mirroring is a file-drop protocol by design.** "Open mirroring enables
+  any application to write change data directly into a mirrored database in
+  Fabric... Use your own application to write data into the open mirroring
+  landing zone." The file transfer is the transport; the *mirroring* is what
+  Fabric's replication engine does afterwards, applying `__rowMarker__`
+  semantics to maintain the Delta table.
+* **Native database mirroring** (no file drop, Fabric connects to the source)
+  supports Azure SQL DB, SQL Server, Cosmos DB, Oracle, SAP and
+  **Azure Database for PostgreSQL**. This PostgreSQL is on `localhost`. Fabric
+  cannot reach a laptop, and local PostgreSQL is not a supported native source.
+* **Metadata mirroring via shortcuts** applies to Databricks, Snowflake and
+  Dremio. Not applicable to PostgreSQL.
+
+Conclusion: for this source, open mirroring driven by logical replication is the
+only real CDC path. **Decision: drop the bulk snapshot entirely** and stream
+changes only. The in-flight upload was stopped and the landing zone cleared, to
+avoid spending ~7 GB more bandwidth on files that would have been deleted anyway
+once the key column changed.
+
+---
+
+## 16. Logical replication enabled
+
+`Restart-Service` from a normal shell fails with
+`Cannot open postgresql-x64-16 service on computer '.'`. Elevating through
+`Start-Process -Verb RunAs` triggers a UAC prompt and works.
+
+After restart:
+
+| Setting | Value |
+| --- | --- |
+| `wal_level` | **logical** |
+| `max_wal_size` | 4GB |
+| `checkpoint_timeout` | 15min |
+| Rows still present | 50,000,000 |
+
+---
+
+## 17. The replica identity blocker
+
+Checked what PostgreSQL would actually emit before writing any CDC code:
+
+```
+replica identity : d   (default = use the primary key)
+indexes on table : 0
+```
+
+`relreplident = 'd'` with **no primary key** means PostgreSQL emits **nothing at
+all** for UPDATE and DELETE. Logical replication would have silently produced an
+insert-only feed, which would look like it was working while quietly being
+wrong. This is exactly the failure mode that makes a mirror indistinguishable
+from a copy.
+
+Separately, the mirroring `keyColumns` has to be genuinely unique or Fabric
+cannot match an UPDATE to one row. `txn_id` has **593,209 duplicates**, and
+because those duplicates are **exact full-row copies**, no subset of the 100
+columns is unique either. A composite natural key is mathematically impossible
+here.
+
+**Decision: add a surrogate key.** It is landing-layer metadata, so all 100
+business columns stay byte-identical and untransformed:
+
+```sql
+ALTER TABLE landing.raw_txn ADD COLUMN _mirror_row_id bigint GENERATED ALWAYS AS IDENTITY;
+ALTER TABLE landing.raw_txn ADD CONSTRAINT raw_txn_pk PRIMARY KEY (_mirror_row_id);
+```
+
+This rewrites all 48 GB, so it is slow, and the tablespace temporarily holds two
+copies (observed growing 48 -> 64 GB and climbing). Ordering matters: the
+replication slot must be created **after** this completes, because a slot would
+retain every byte of rewrite WAL and could fill `C:`.
+
+---
+
+## 18. The CDC replicator
+
+`scripts/cdc_to_fabric.py` streams committed changes out of the WAL and lands
+them as change files:
+
+```
+postgres INSERT/UPDATE/DELETE
+  -> WAL
+  -> logical replication slot (test_decoding)
+  -> parse
+  -> parquet with __rowMarker__ as the FINAL column
+  -> LandingZone/<table>/NNNNNNNNNNNNNNNNNNNN.parquet
+  -> Fabric applies insert / update / delete to the Delta table
+```
+
+Implementation notes:
+
+* `wal2json` is not available on this machine; `pgoutput` and `test_decoding`
+  are. `test_decoding` is used via `pg_logical_slot_get_changes()`, which avoids
+  implementing the streaming replication protocol.
+* Parsing `test_decoding` output is done character by character, not with a
+  regex. The payload format is `name[type]:value` where text is single quoted
+  with doubled internal quotes, and this dataset deliberately contains commas,
+  quotes and whitespace inside values.
+* `__rowMarker__` is written as the final column, per the spec.
+* File sequence numbers continue from whatever is already in the landing zone.
+
+The testable difference from a copy: an `UPDATE` in PostgreSQL makes the row
+**change** in Fabric, and a `DELETE` makes it **disappear**. Copying files can
+only ever append.
+
+---
+
+## 19. Tuning for this machine
+
+Defaults were the stock PostgreSQL install. Applied for 16 cores / 31 GB:
+
+| Setting | Before | After | Notes |
+| --- | --- | --- | --- |
+| `maintenance_work_mem` | 64 MB | **2047 MB** | big win for the PK build |
+| `max_parallel_maintenance_workers` | 2 | 4 | capped by `max_worker_processes` |
+| `max_parallel_workers` | 8 | 16 | |
+| `work_mem` | 4 MB | 256 MB | |
+| `effective_cache_size` | 4 GB | 24 GB | |
+| `random_page_cost` | 4 | 1.1 | SSD |
+| `wal_compression` | off | **zstd** | cuts rewrite WAL volume |
+| `synchronous_commit` | on | off | |
+| `shared_buffers` | 128 MB | 8 GB | **needs restart** |
+| `max_worker_processes` | 8 | 20 | **needs restart** |
+
+Two platform limits worth remembering:
+
+* `maintenance_work_mem` maxes out at **2097151 kB**, so `'2GB'` (2097152 kB) is
+  rejected by exactly one kilobyte. Use `'2047MB'`.
+* `effective_io_concurrency` must be **0 on Windows**; any other value is
+  rejected outright.
+
+---
+
+## 20. Current state
 
 **Done**
 
-- 50,000,000 rows x 100 messy text columns generated to `D:/duckdb-fabric-data/csv` (45.0 GB)
-- Loaded into `landing.raw_txn` in PostgreSQL 16 (48 GB, all TEXT, LOGGED, on the `bigdata` tablespace)
-- Integrity verified, mess and duplicates preserved
-- Scripts and README pushed to `https://github.com/sulaiman013/fabric-x-duckdb`
-- Fabric authenticated, workspace and mirrored database identified, open-mirroring spec confirmed
-- azcopy installed, authenticated, and proven against OneLake
+- 50,000,000 rows x 100 messy text columns generated (45.0 GB, 35 min)
+- Loaded into `landing.raw_txn` (48 GB, all TEXT, LOGGED, `bigdata` tablespace on `D:`), 10.9 min at 76,465 rows/s
+- Integrity verified: exact row count, NULL vs empty string preserved, 593,209 duplicate `txn_id`s intact
+- Open mirroring proven end to end on a 200k trial: `Replicating`, real Delta table with `_delta_log` and V-Order index
+- `wal_level = logical` active, PostgreSQL tuned
+- azcopy installed, authenticated, ~9.4 MB/s to OneLake
+- `cdc_to_fabric.py` written
+- Everything pushed to `https://github.com/sulaiman013/fabric-x-duckdb`
 
-**Blocked / pending**
+**In progress**
 
-1. **PostgreSQL restart required.** `wal_level=logical`, `max_wal_size=4GB` and
-   `checkpoint_timeout=15min` are staged via `ALTER SYSTEM` but need a restart,
-   which needs Administrator:
-   ```
-   Restart-Service postgresql-x64-16 -Force
-   ```
-   Until then `wal_level` is still `replica` and logical replication is not possible.
+- `ALTER TABLE ... ADD COLUMN _mirror_row_id` rewriting 48 GB
 
-2. **Initial snapshot to Fabric.** Export `landing.raw_txn` to zstd Parquet in
-   mirroring-compliant files and azcopy them into
-   `Files/LandingZone/raw_txn/`, with `_metadata.json` and no `__rowMarker__`.
+**Next**
 
-3. **Open question: which column is the mirroring key.** `txn_id` has **593,209
-   duplicates** by design. Duplicates are harmless for the initial load (inserts
-   do not deduplicate), but they make `txn_id` unsafe as `keyColumns` for CDC
-   upserts, since an update would be ambiguous across duplicate rows. Needs a
-   decision before enabling incremental changes.
+1. Restart PostgreSQL to pick up `shared_buffers = 8GB` and `max_worker_processes = 20`
+2. `cdc_to_fabric.py --setup` to create the `fabric_cdc` slot (only after the rewrite, so the slot does not pin rewrite WAL)
+3. `cdc_to_fabric.py --run` to start streaming
+4. Issue INSERT / UPDATE / DELETE in PostgreSQL and verify in Fabric that rows appear, change and disappear
