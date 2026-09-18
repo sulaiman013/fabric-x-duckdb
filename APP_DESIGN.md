@@ -133,25 +133,38 @@ channel and country, which is visibly wrong.
 Instead Phase 2 derives risk from columns that are genuinely informative, using
 rules that a real financial crime team would recognise:
 
-| Rule | Derivation | Why it is sound here |
-| --- | --- | --- |
-| `R01 cross_border` | `txn_currency <> account_currency` | both columns real; ~14% of rows are non-MYR |
-| `R02 card_not_present` | `entry_mode in (ECOM, E-COMMERCE, KEYED, MANUAL)` | real categorical |
-| `R03 amount_anomaly` | transaction amount percentile **within that customer's own history** | amounts are genuinely log-skewed, so percentiles are meaningful |
-| `R04 odd_hour` | `hour(txn_ts) between 01:00 and 05:00` | timestamps are real |
-| `R05 velocity` | transactions per card per rolling hour | works on the heavy tail: customer selection is `pow(random, 2.0)` skewed, so active customers really do cluster |
-| `R06 new_merchant` | first time this customer transacts at this merchant | derived from real ids |
-| `R07 high_risk_mcc` | MCC in {6011 ATM, 4829 money transfer, 7995 gambling} | real MCC values |
-| `R08 round_amount` | amount is a round hundred | real |
-| `R09 declined_streak` | consecutive non-approved `auth_response` per card | real categorical |
+| Rule | Derivation | Fires on | Status |
+| --- | --- | --- | --- |
+| `R02 card_not_present` | `entry_mode in (ECOM, E-COMMERCE, KEYED, MANUAL)` | 20.48% | kept |
+| `R03 amount_anomaly` | amount percentile **within that customer's own history**, customers with 5+ transactions only | 0.94% | kept |
+| `R04 odd_hour` | `hour(txn_ts) between 01:00 and 05:00` | 20.63% | kept |
+| `R05 velocity` | two or more transactions on one account inside a clock hour | 1.20% | recalibrated from three, which fired on 0.01% |
+| `R06 new_merchant` | first use of a merchant, customers with 20+ transactions only | 1.12% | recalibrated; unrestricted it fired on 85.88% |
+| `R07 high_risk_mcc` | MCC in {6011 ATM, 4829 money transfer, 7995 gambling} | 4.28% | kept |
+| `R09 declined_streak` | `auth_response` not approved | 49.69% | kept, borderline |
+| ~~`R01 cross_border`~~ | ~~currency differs from account currency~~ | ~~80.22%~~ | **dropped** |
+| ~~`R08 round_amount`~~ | ~~amount is a round hundred~~ | ~~0.00%~~ | **dropped** |
+
+Nine rules were specified. Four did not survive contact with the data, which is
+the point of measuring rather than assuming. `R01` fires on four rows in five
+because currency is uniform in this source, so it cannot rank anything. `R08`
+never fires at all because amounts come from a continuous distribution and
+essentially never land on exact hundreds. `R05` and `R06` were salvageable by
+changing a threshold and by requiring enough customer history for "first time"
+to mean a departure from a pattern rather than the normal case.
 
 `risk_score` is the weighted sum of the fired rules.
 
-**Why this produces real analytics.** The score is a function of varying inputs,
-so it has a genuine distribution rather than a flat line, and it correlates with
-its own drivers *by construction*. "High-risk transactions skew cross-border and
-card-not-present" becomes a true, explainable statement about this data instead
-of an artefact.
+**Why this produces real analytics.** Measured on a reproducible 2,000,000 row
+slice, the score lands 83.3% low, 15.8% medium and 0.9% high, which is the
+pyramid a risk score is supposed to make, and every rule fires at 0.0% in the
+bottom decile so the separation is clean.
+
+Against the source column, on a scale-normalised test of whether either score
+separates groups at all: across entry modes the derived score's group means move
+**67.59% of its scale**, the source `fraud_score`'s move **1.52%**. Comparing
+raw standard deviations would be meaningless here, since the two sit on
+different scales and the source column's is in fact the larger of the two.
 
 ### Outcome label
 
