@@ -115,13 +115,31 @@ MEASURES = {
          "0.0%"),
         ("Cross Border Amount",
          'CALCULATE ( [Total Amount], fact_transaction[txn_currency] <> "MYR" )', RM0),
+        # Score-driven alerting. This is the measure the triage queue is built
+        # on, and the one that decides how many people the function needs.
+        ("Alerts Raised",
+         'CALCULATE ( [Transactions], fact_transaction[risk_band] = "HIGH" )', "#,0"),
+        ("Alert Rate", "DIVIDE ( [Alerts Raised], [Transactions] )", "0.00%"),
+        # Translate the queue into staffing. An analyst clears roughly 50,000
+        # alerts a year, so this is the honest cost of a threshold choice, and
+        # it is what makes a tuning decision arguable rather than aesthetic.
+        ("Analyst Years to Clear", "DIVIDE ( [Alerts Raised], 50000 )", "#,0.0"),
     ],
+    # An alert is what a human picks up and works. A rule firing is a
+    # contribution to a score, not a work item. Conflating the two produced an
+    # 80.18% alert rate, which is 39,614,364 alerts, roughly 792 analyst-years
+    # at the ~50,000 alerts an analyst clears annually, or 317 full-time
+    # analysts standing behind this dataset. Real transaction monitoring raises
+    # an alert when the composite score crosses a threshold.
     "fact_alert": [
-        ("Alerts", "COUNTROWS ( fact_alert )", "#,0"),
-        ("Alerts per Transaction", "DIVIDE ( [Alerts], [Transactions] )", "#,0.00"),
-        ("Transactions Alerted",
+        ("Rule Firings", "COUNTROWS ( fact_alert )", "#,0"),
+        ("Rule Firings per Transaction", "DIVIDE ( [Rule Firings], [Transactions] )", "#,0.00"),
+        ("Transactions With Any Rule",
          "DISTINCTCOUNT ( fact_alert[_mirror_row_id] )", "#,0"),
-        ("Alert Fire Rate", "DIVIDE ( [Transactions Alerted], [Transactions] )", "0.0%"),
+        ("Any Rule Rate",
+         "DIVIDE ( [Transactions With Any Rule], [Transactions] )", "0.0%"),
+        # Noise ratio: how many rule firings the team absorbs per real alert.
+        ("Rule Firings per Alert", "DIVIDE ( [Rule Firings], [Alerts Raised] )", "#,0.0"),
     ],
 }
 

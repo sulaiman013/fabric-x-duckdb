@@ -1,10 +1,10 @@
 table dim_customer
-	lineageTag: cd22fb16-a868-453a-acde-8bbfdc472517
+	lineageTag: d30d8ccc-e853-4f4e-896c-42628544fcb5
 
 	column customer_key
 		dataType: int64
 		isHidden
-		lineageTag: 1a933466-d900-4289-bf8d-db853c9ba02e
+		lineageTag: ab603bab-a6a2-4e0e-9297-2e381ca1c6d1
 		summarizeBy: none
 		sourceColumn: customer_key
 
@@ -12,7 +12,7 @@ table dim_customer
 
 	column customer_id
 		dataType: string
-		lineageTag: 5380ab9b-6493-4c4a-b734-ca2e285e82e1
+		lineageTag: d3cebef7-c485-4dad-ba14-a06d13bbc252
 		summarizeBy: none
 		sourceColumn: customer_id
 
@@ -20,7 +20,7 @@ table dim_customer
 
 	column first_name
 		dataType: string
-		lineageTag: 5beadb8f-8c32-4cbd-8e21-22ebb37f1e63
+		lineageTag: ac318f22-ad81-432a-9349-56d708c8d6e6
 		summarizeBy: none
 		sourceColumn: first_name
 
@@ -28,7 +28,7 @@ table dim_customer
 
 	column last_name
 		dataType: string
-		lineageTag: 703055ba-377d-4e76-8eaf-1ee5f029defd
+		lineageTag: a0fd4a83-6c9d-4df6-b13c-7343ce8de93d
 		summarizeBy: none
 		sourceColumn: last_name
 
@@ -36,7 +36,7 @@ table dim_customer
 
 	column gender
 		dataType: string
-		lineageTag: 5dac0aeb-520f-42a4-880d-0a8fcffaac9f
+		lineageTag: 8f05585c-af60-413e-a6f5-6ff424b7d7c4
 		summarizeBy: none
 		sourceColumn: gender
 
@@ -45,7 +45,7 @@ table dim_customer
 	column date_of_birth
 		dataType: dateTime
 		formatString: Short Date
-		lineageTag: d0ce9277-2c81-451b-942d-65699d7d21be
+		lineageTag: d1dc76b9-4f15-47e2-abd5-6a9134b8f162
 		summarizeBy: none
 		sourceColumn: date_of_birth
 
@@ -53,7 +53,7 @@ table dim_customer
 
 	column occupation
 		dataType: string
-		lineageTag: 4fd7be19-9b38-4b3a-8cfe-d460fba4fe56
+		lineageTag: 4c37d718-e38a-451a-963e-52b38a9c21f1
 		summarizeBy: none
 		sourceColumn: occupation
 
@@ -61,7 +61,7 @@ table dim_customer
 
 	column addr_city
 		dataType: string
-		lineageTag: 052c48a2-6612-4283-b58a-009b608f859b
+		lineageTag: 9111493c-a11d-4834-bed9-82e5d69fba9b
 		summarizeBy: none
 		sourceColumn: addr_city
 
@@ -69,7 +69,7 @@ table dim_customer
 
 	column addr_state
 		dataType: string
-		lineageTag: 37ae31b1-187d-4e1f-b456-790680898f7f
+		lineageTag: e3bf23ff-27c5-495f-b251-5ebf2f778a2d
 		summarizeBy: none
 		sourceColumn: addr_state
 
@@ -77,7 +77,7 @@ table dim_customer
 
 	column nationality
 		dataType: string
-		lineageTag: c2b177a4-76f0-4bf9-8cc3-db37cf249050
+		lineageTag: dd82ada6-6f61-4472-b547-da748638283e
 		summarizeBy: none
 		sourceColumn: nationality
 
@@ -86,7 +86,7 @@ table dim_customer
 	column kyc_rank
 		dataType: int64
 		isHidden
-		lineageTag: d64ed498-c3ef-4ca0-81d3-9cb6e5cfeb26
+		lineageTag: 52078246-591f-4216-aa2f-988653e2a346
 		summarizeBy: none
 		sourceColumn: kyc_rank
 
@@ -94,7 +94,7 @@ table dim_customer
 
 	column ever_pep
 		dataType: boolean
-		lineageTag: 030112b6-7d71-4183-bcc8-b92b3d9c438e
+		lineageTag: 142cfe7f-0345-475d-82b5-3b60a009d7ba
 		summarizeBy: none
 		sourceColumn: ever_pep
 
@@ -102,7 +102,7 @@ table dim_customer
 
 	column ever_sanctioned
 		dataType: boolean
-		lineageTag: 0bd31b8c-79ce-4064-9215-bc3cebcdbcac
+		lineageTag: b9321a21-ade3-4691-a0ab-4ebb979897dd
 		summarizeBy: none
 		sourceColumn: ever_sanctioned
 
@@ -111,7 +111,7 @@ table dim_customer
 	column risk_rank
 		dataType: int64
 		isHidden
-		lineageTag: 98884207-cad2-48f7-bceb-c58e699a7775
+		lineageTag: 21a73195-c03f-43f9-ae6c-162fd30a1788
 		summarizeBy: none
 		sourceColumn: risk_rank
 
@@ -120,7 +120,7 @@ table dim_customer
 	column txn_count
 		dataType: int64
 		formatString: #,0
-		lineageTag: 641750d7-6a7d-4457-aad7-30eb49af2eac
+		lineageTag: 6fda3d0f-063c-47e4-95a5-78f758539c78
 		summarizeBy: sum
 		sourceColumn: txn_count
 

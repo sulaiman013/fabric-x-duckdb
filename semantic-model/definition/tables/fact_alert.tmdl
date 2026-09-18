@@ -1,10 +1,10 @@
 table fact_alert
-	lineageTag: c90193d2-1e55-4941-93c5-a41ffe379410
+	lineageTag: fc918726-e531-448b-8660-4dfae9b0cf38
 
 	column _mirror_row_id
 		dataType: int64
 		isHidden
-		lineageTag: 99b29ccb-1774-49f3-88d2-3069c0fbab76
+		lineageTag: 0d4ab768-b956-4392-a26c-2770a74cd5db
 		summarizeBy: none
 		sourceColumn: _mirror_row_id
 
@@ -12,7 +12,7 @@ table fact_alert
 
 	column rule_id
 		dataType: string
-		lineageTag: cbe27abd-2de7-46e9-abbe-90842358ed0a
+		lineageTag: 06f2cca2-2dfe-48e4-9e83-456760ed5385
 		summarizeBy: none
 		sourceColumn: rule_id
 
@@ -21,31 +21,36 @@ table fact_alert
 	column weight
 		dataType: int64
 		formatString: #,0
-		lineageTag: 182f4c6c-2107-4358-9d4d-30daf233c1e5
+		lineageTag: aa0a7a03-c793-4146-b102-a11a3189b05d
 		summarizeBy: sum
 		sourceColumn: weight
 
 		annotation SummarizationSetBy = Automatic
 
-	measure 'Alerts' =
+	measure 'Rule Firings' =
 			COUNTROWS ( fact_alert )
 		formatString: #,0
-		lineageTag: 948efcf6-4522-4cc6-8633-2848125ea162
+		lineageTag: 4841af35-8f0d-4c06-b919-c67ea3c38374
 
-	measure 'Alerts per Transaction' =
-			DIVIDE ( [Alerts], [Transactions] )
+	measure 'Rule Firings per Transaction' =
+			DIVIDE ( [Rule Firings], [Transactions] )
 		formatString: #,0.00
-		lineageTag: 3797e3d6-e0a6-43e1-8bb4-e7fa03318d08
+		lineageTag: f39944ba-8c38-4a7f-8bc3-1ba71155ab30
 
-	measure 'Transactions Alerted' =
+	measure 'Transactions With Any Rule' =
 			DISTINCTCOUNT ( fact_alert[_mirror_row_id] )
 		formatString: #,0
-		lineageTag: eca25503-e117-4425-828e-648f57d19d5b
+		lineageTag: f3770cfd-5d11-408e-9246-003de6cf2800
 
-	measure 'Alert Fire Rate' =
-			DIVIDE ( [Transactions Alerted], [Transactions] )
+	measure 'Any Rule Rate' =
+			DIVIDE ( [Transactions With Any Rule], [Transactions] )
 		formatString: 0.0%
-		lineageTag: 44dafd0b-f703-4117-86cc-0071e2425e71
+		lineageTag: ba121a26-e7d1-4c02-95d8-0e05421c1de8
+
+	measure 'Rule Firings per Alert' =
+			DIVIDE ( [Rule Firings], [Alerts Raised] )
+		formatString: #,0.0
+		lineageTag: 817cb655-949c-454b-816b-c22fb17c5b43
 
 	partition fact_alert = entity
 		mode: directLake

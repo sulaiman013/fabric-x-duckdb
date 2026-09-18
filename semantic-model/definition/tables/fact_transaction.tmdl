@@ -1,10 +1,10 @@
 table fact_transaction
-	lineageTag: 14bbf3e3-2ad5-4489-832e-b7b4cd1c1f60
+	lineageTag: 3bbc94be-7dcf-4e65-87e4-10e207701b71
 
 	column _mirror_row_id
 		dataType: int64
 		isHidden
-		lineageTag: 170d311d-c364-4b31-b0db-56f177f2c018
+		lineageTag: 4950b021-1762-4cdc-a4c5-acc94d3d79b8
 		summarizeBy: none
 		sourceColumn: _mirror_row_id
 
@@ -12,7 +12,7 @@ table fact_transaction
 
 	column txn_id
 		dataType: string
-		lineageTag: a30c9e5c-e211-4270-bc10-6ce6f707868c
+		lineageTag: f2577901-29d7-4abf-a96f-046ffe68fa95
 		summarizeBy: none
 		sourceColumn: txn_id
 
@@ -21,7 +21,7 @@ table fact_transaction
 	column date_key
 		dataType: int64
 		isHidden
-		lineageTag: 03aae8e6-9798-41a8-9d43-6268fa27c390
+		lineageTag: 16c92b98-a41c-4582-b8d0-c50624b1bd5b
 		summarizeBy: none
 		sourceColumn: date_key
 
@@ -30,7 +30,7 @@ table fact_transaction
 	column time_key
 		dataType: int64
 		isHidden
-		lineageTag: f3e343b8-bf39-4e5c-844b-f44e60ea7a15
+		lineageTag: a15ef926-b25f-4342-9259-843703a69c99
 		summarizeBy: none
 		sourceColumn: time_key
 
@@ -39,7 +39,7 @@ table fact_transaction
 	column customer_key
 		dataType: int64
 		isHidden
-		lineageTag: dc41296e-d2a1-4384-bcd3-e644418ed713
+		lineageTag: a355483c-d339-45d6-a1e3-361066392795
 		summarizeBy: none
 		sourceColumn: customer_key
 
@@ -48,7 +48,7 @@ table fact_transaction
 	column merchant_key
 		dataType: int64
 		isHidden
-		lineageTag: 9ddc218d-7c95-4c45-95f0-ac38d35257d2
+		lineageTag: 2324b2ad-4c86-46c0-94bc-f734cb080a9a
 		summarizeBy: none
 		sourceColumn: merchant_key
 
@@ -57,7 +57,7 @@ table fact_transaction
 	column channel_key
 		dataType: int64
 		isHidden
-		lineageTag: 731a8a54-1fa7-47c0-ad6d-07977caf47be
+		lineageTag: ce873125-7d40-4f39-b586-353e02558614
 		summarizeBy: none
 		sourceColumn: channel_key
 
@@ -66,7 +66,7 @@ table fact_transaction
 	column card_key
 		dataType: int64
 		isHidden
-		lineageTag: d0c5e436-f03c-4857-8742-bfdc3d7d1a71
+		lineageTag: 2f958f65-9a6a-401a-a23c-81f610ff1397
 		summarizeBy: none
 		sourceColumn: card_key
 
@@ -75,7 +75,7 @@ table fact_transaction
 	column txn_ts
 		dataType: dateTime
 		formatString: General Date
-		lineageTag: 65507b5b-cc0b-45ef-b128-36d47e1ce292
+		lineageTag: f825748e-978a-49d3-aaf2-d744f7f44ecf
 		summarizeBy: none
 		sourceColumn: txn_ts
 
@@ -83,7 +83,7 @@ table fact_transaction
 
 	column txn_type
 		dataType: string
-		lineageTag: aa996f33-4715-4aa3-a21b-5b5f0796df72
+		lineageTag: c6a50095-f51d-40cd-b4fe-e65c996b5534
 		summarizeBy: none
 		sourceColumn: txn_type
 
@@ -91,7 +91,7 @@ table fact_transaction
 
 	column txn_status
 		dataType: string
-		lineageTag: 37811292-4db8-4227-81b8-b2f20f9098e3
+		lineageTag: cbcc18ec-e06d-4668-bbc0-8077fdb0c3f2
 		summarizeBy: none
 		sourceColumn: txn_status
 
@@ -100,7 +100,7 @@ table fact_transaction
 	column txn_amount
 		dataType: decimal
 		formatString: #,0.00
-		lineageTag: 1c9795ae-6d22-419a-9aa4-5fb62d50ddfd
+		lineageTag: 7ba2918a-b746-483b-b440-29260c30cf2f
 		summarizeBy: sum
 		sourceColumn: txn_amount
 
@@ -108,7 +108,7 @@ table fact_transaction
 
 	column txn_currency
 		dataType: string
-		lineageTag: 46cdf2c7-f966-4399-9801-02a238a0de2d
+		lineageTag: 30990684-50bb-4d54-a826-bda7531ab437
 		summarizeBy: none
 		sourceColumn: txn_currency
 
@@ -117,7 +117,7 @@ table fact_transaction
 	column amount_local
 		dataType: decimal
 		formatString: #,0.00
-		lineageTag: db458bf9-b4c2-4739-8ed1-d19fbfd135ce
+		lineageTag: e20c5206-1e0f-4e0e-b4cb-b22965d01300
 		summarizeBy: sum
 		sourceColumn: amount_local
 
@@ -126,7 +126,7 @@ table fact_transaction
 	column fee_amount
 		dataType: decimal
 		formatString: #,0.00
-		lineageTag: df330bff-b3a0-4423-b590-966e617dbb8d
+		lineageTag: 5b5f775c-0a93-419e-92dc-3664dd7f3410
 		summarizeBy: sum
 		sourceColumn: fee_amount
 
@@ -134,7 +134,7 @@ table fact_transaction
 
 	column auth_approved
 		dataType: boolean
-		lineageTag: 67212747-b798-48d3-aef9-366fb08e0540
+		lineageTag: 5f6a8b55-670e-45f5-8afe-838e5fb921d3
 		summarizeBy: none
 		sourceColumn: auth_approved
 
@@ -143,7 +143,7 @@ table fact_transaction
 	column risk_score
 		dataType: int64
 		formatString: #,0
-		lineageTag: 783c7d28-c02a-4938-85c9-ed6bfcc11121
+		lineageTag: cde96fa5-117d-4d1d-af0f-c67708825fb5
 		summarizeBy: sum
 		sourceColumn: risk_score
 
@@ -152,7 +152,7 @@ table fact_transaction
 	column rules_fired
 		dataType: int64
 		formatString: #,0
-		lineageTag: 21874433-cfcf-4b88-b096-3036920f686a
+		lineageTag: 5acc505c-ad3c-4b7f-b58d-8d51c263f78b
 		summarizeBy: sum
 		sourceColumn: rules_fired
 
@@ -160,7 +160,7 @@ table fact_transaction
 
 	column risk_band
 		dataType: string
-		lineageTag: 25b1a930-b8f5-4740-99d5-0e3779f7c4b8
+		lineageTag: f8d6a698-b0ae-4cf1-a1ce-b9bc6a0c2b72
 		summarizeBy: none
 		sourceColumn: risk_band
 
@@ -169,47 +169,62 @@ table fact_transaction
 	measure 'Transactions' =
 			COUNTROWS ( fact_transaction )
 		formatString: #,0
-		lineageTag: 11a65f18-12ed-45e4-8315-a095fa8bc32f
+		lineageTag: 95a99461-9635-42a7-9890-7a9901d3cb00
 
 	measure 'Total Amount' =
 			SUM ( fact_transaction[txn_amount] )
 		formatString: "RM "#,0.00
-		lineageTag: 590b9a30-3a8d-4f62-9e01-b47112e28ad7
+		lineageTag: 7f9ad41b-8e3f-4b7d-8479-ad70efe7248c
 
 	measure 'Distinct Customers' =
 			DISTINCTCOUNT ( fact_transaction[customer_key] )
 		formatString: #,0
-		lineageTag: 430ea20f-3473-4520-ad20-967c3d5f93bc
+		lineageTag: 22a6d5ed-f840-4cf2-9af5-01b1fbc2c5d6
 
 	measure 'Average Risk Score' =
 			AVERAGE ( fact_transaction[risk_score] )
 		formatString: #,0.0
-		lineageTag: 22c1aa0c-aecc-4d46-bcf7-2ea46f9c0bc3
+		lineageTag: 8acbb41c-0eae-4f50-a819-0402dc4d9e86
 
 	measure 'High Risk Transactions' =
 			CALCULATE ( [Transactions], fact_transaction[risk_band] = "HIGH" )
 		formatString: #,0
-		lineageTag: 45f58d74-ab62-4133-949a-8c1cc68baffc
+		lineageTag: 23899e14-4f65-4b81-9301-0bf83e27919a
 
 	measure 'High Risk Rate' =
 			DIVIDE ( [High Risk Transactions], [Transactions] )
 		formatString: 0.00%
-		lineageTag: 3837393c-9748-4e61-8012-8e56f9aad6cb
+		lineageTag: ed873cd8-6d72-4cea-8af9-3b7ff93bf612
 
 	measure 'Exposure at Risk' =
 			CALCULATE ( [Total Amount], fact_transaction[risk_band] = "HIGH" )
 		formatString: "RM "#,0
-		lineageTag: b95fed21-1500-48a8-8bcc-caac11e9784f
+		lineageTag: 7bd025c2-f614-4002-9028-ebd8a5776b1f
 
 	measure 'Approval Rate' =
 			DIVIDE ( CALCULATE ( [Transactions], fact_transaction[auth_approved] = TRUE () ), CALCULATE ( [Transactions], NOT ISBLANK ( fact_transaction[auth_approved] ) ) )
 		formatString: 0.0%
-		lineageTag: 27c53236-b5bf-4ee5-9534-1a2dc87ac050
+		lineageTag: fd803617-ada1-4cc8-88cc-2037a621cd4e
 
 	measure 'Cross Border Amount' =
 			CALCULATE ( [Total Amount], fact_transaction[txn_currency] <> "MYR" )
 		formatString: "RM "#,0
-		lineageTag: 4e91eb2d-d33c-47ad-9539-29c57818a9e6
+		lineageTag: 49954222-de4c-4e2d-bf86-b864fc15faf9
+
+	measure 'Alerts Raised' =
+			CALCULATE ( [Transactions], fact_transaction[risk_band] = "HIGH" )
+		formatString: #,0
+		lineageTag: d8e5ae5e-b90b-4909-bede-0e4043028527
+
+	measure 'Alert Rate' =
+			DIVIDE ( [Alerts Raised], [Transactions] )
+		formatString: 0.00%
+		lineageTag: 1639e745-4121-44a7-8da1-22382f3973d0
+
+	measure 'Analyst Years to Clear' =
+			DIVIDE ( [Alerts Raised], 50000 )
+		formatString: #,0.0
+		lineageTag: 8e04e8f6-5f56-4da3-ab93-94be6651a6da
 
 	partition fact_transaction = entity
 		mode: directLake

@@ -1131,3 +1131,57 @@ percentage, and then measuring what that costs in missed high-risk
 transactions. That is a precision and recall trade-off, and it needs the
 simulated outcome label from section 6 of `APP_DESIGN.md` to be measurable at
 all. Recorded here rather than quietly tuned away.
+
+---
+
+## 34. Fixing the alert rate: it was a modelling error, not a threshold
+
+Researched how the industry measures this before touching the thresholds.
+
+Published benchmarks put rule-based transaction monitoring at **90-95% false
+positives**, a PwC figure cited consistently since 2018, with legacy rule-only
+systems running 97-99% and well-tuned AI-augmented systems reaching 80-85%. A
+compliance analyst clears roughly **50,000 alerts per year**.
+
+That last number is the useful one, because it converts a percentage into
+headcount:
+
+| Design | Alert rate | Alerts | Analyst-years | FTE analysts |
+| --- | --- | --- | --- | --- |
+| Any rule fires | 80.18% | 39,614,364 | 792 | **317** |
+| Score >= 60 | 2.85% | 1,408,756 | 28.2 | **11** |
+
+**The defect was conceptual, not numeric.** I had defined an alert as "any rule
+fired". Real transaction monitoring raises an alert when the composite score
+crosses a threshold; an individual rule firing is a contribution to that score,
+not a work item someone picks up. `fact_alert` was conflating the two, so every
+rule contribution was being counted as a piece of work.
+
+Raising rule thresholds would have treated the symptom. The fix is to alert on
+the score.
+
+### Measures after the fix
+
+| Measure | Value |
+| --- | --- |
+| Alerts Raised | 1,408,756 |
+| Alert Rate | **2.85%** |
+| Analyst Years to Clear | **28.2** |
+| Rule Firings | 65,088,689 |
+| Rule Firings per Alert | **46.2** |
+| Any Rule Rate | 80.18% |
+
+The 80.18% figure is kept, renamed **Any Rule Rate**, because it is a real
+property of the rule set and hiding it would be dishonest. It just is not the
+alert rate. `Rule Firings per Alert` at 46.2 quantifies what the scoring absorbs:
+46 rule contributions distilled into one work item.
+
+### Analyst Years to Clear
+
+Added deliberately. A threshold argument conducted in percentages is aesthetic;
+conducted in headcount it is decidable. 2.85% sounds acceptable and 80% sounds
+bad, but the sentence that settles a tuning decision is "this threshold needs
+eleven analysts and that one needs three hundred and seventeen".
+
+Sources: PwC false positive benchmark via FluxForce and Tookitaki industry
+reviews, analyst throughput figure from the same.

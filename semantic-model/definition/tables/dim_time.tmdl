@@ -1,10 +1,10 @@
 table dim_time
-	lineageTag: fd50711c-6ea3-4eb1-a3f9-da4cf5ff4d86
+	lineageTag: 6526aa20-a507-4370-8589-acdb4e2c795c
 
 	column time_key
 		dataType: int64
 		isHidden
-		lineageTag: 88c02c28-7563-477a-95d1-84c17f9193a5
+		lineageTag: ab64993c-b809-466d-adbf-37081a7168f5
 		summarizeBy: none
 		sourceColumn: time_key
 
@@ -12,7 +12,7 @@ table dim_time
 
 	column hour_of_day
 		dataType: int64
-		lineageTag: b065eb91-044e-45a8-8557-5e8c200c0ced
+		lineageTag: 800919ff-c043-4f73-b013-5c54d0fa73e1
 		summarizeBy: sum
 		sourceColumn: hour_of_day
 
@@ -20,7 +20,7 @@ table dim_time
 
 	column hour_label
 		dataType: string
-		lineageTag: 2ff371a7-0a41-4fe6-9b1f-b745d0384fd1
+		lineageTag: 14a78398-98d3-46f6-b2a4-5d5478900495
 		summarizeBy: none
 		sourceColumn: hour_label
 
@@ -28,7 +28,7 @@ table dim_time
 
 	column day_part
 		dataType: string
-		lineageTag: 137bc953-4285-4e24-90f0-d74512f969c7
+		lineageTag: 71684c33-43ba-4aec-ae40-9c45889a0011
 		summarizeBy: none
 		sourceColumn: day_part
 
@@ -36,7 +36,7 @@ table dim_time
 
 	column is_odd_hour
 		dataType: boolean
-		lineageTag: 533ce782-c968-41e8-b7b5-abc740b62f90
+		lineageTag: e69e6b4b-2505-4b1f-a550-c6af882af3e3
 		summarizeBy: none
 		sourceColumn: is_odd_hour
 

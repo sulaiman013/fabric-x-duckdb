@@ -1,10 +1,10 @@
 table dim_card
-	lineageTag: 97ae0c27-8806-4a23-9759-9ff0bd954505
+	lineageTag: 5069a1e7-f6aa-4b45-8967-c5c293e9e92e
 
 	column card_key
 		dataType: int64
 		isHidden
-		lineageTag: e363132a-6576-4e16-8341-0cfd62593d67
+		lineageTag: 2b685165-da44-4bf3-988c-5a69742c3bae
 		summarizeBy: none
 		sourceColumn: card_key
 
@@ -12,7 +12,7 @@ table dim_card
 
 	column card_bin
 		dataType: string
-		lineageTag: 55380ce3-d593-43a3-aa54-6c0af19c08c4
+		lineageTag: ec8e83c3-846a-4c35-a51b-4111096eef8d
 		summarizeBy: none
 		sourceColumn: card_bin
 
@@ -20,7 +20,7 @@ table dim_card
 
 	column card_brand
 		dataType: string
-		lineageTag: 6f13dcb6-e435-4411-86b1-848feeeab33b
+		lineageTag: e7977809-c93c-4921-af37-180786b6bd6d
 		summarizeBy: none
 		sourceColumn: card_brand
 

@@ -1,10 +1,10 @@
 table dim_merchant
-	lineageTag: 01407063-f095-44f5-9654-7a86e86328ad
+	lineageTag: 875b301d-4d25-49b1-810d-a467f2e7d5fd
 
 	column merchant_key
 		dataType: int64
 		isHidden
-		lineageTag: f8e0c679-b72e-4a3e-aa42-9a8f8af711e1
+		lineageTag: a68ac896-aca6-4837-8e77-7d058d88fd5c
 		summarizeBy: none
 		sourceColumn: merchant_key
 
@@ -12,7 +12,7 @@ table dim_merchant
 
 	column merchant_id
 		dataType: string
-		lineageTag: 7cafd30d-c343-4e78-9bab-c1bfb5776789
+		lineageTag: de3838f0-f716-4aa2-8b8a-a31a4c3725a5
 		summarizeBy: none
 		sourceColumn: merchant_id
 
@@ -20,7 +20,7 @@ table dim_merchant
 
 	column merchant_name
 		dataType: string
-		lineageTag: 0c814207-75c5-4ad9-9406-8fe307658e6c
+		lineageTag: da451dac-c35f-4375-bef3-cc1b98250dc6
 		summarizeBy: none
 		sourceColumn: merchant_name
 
@@ -28,7 +28,7 @@ table dim_merchant
 
 	column merchant_mcc
 		dataType: string
-		lineageTag: 2ab0cbe6-d817-45bb-bc61-eee453f7b4b1
+		lineageTag: 21ff5787-9645-4fe7-b939-1d1140ded4f9
 		summarizeBy: none
 		sourceColumn: merchant_mcc
 
@@ -36,7 +36,7 @@ table dim_merchant
 
 	column merchant_country
 		dataType: string
-		lineageTag: d349e804-daaf-4bcb-92f7-13c84ef24ddc
+		lineageTag: d06b8d22-b8d7-436e-9ad5-b472aa38e857
 		summarizeBy: none
 		sourceColumn: merchant_country
 
@@ -45,7 +45,7 @@ table dim_merchant
 	column txn_count
 		dataType: int64
 		formatString: #,0
-		lineageTag: ddc9c3a0-a0ad-4cf2-93a7-e1d8ed91ec70
+		lineageTag: d4b60515-eac0-4c9a-968c-f4ef4279b676
 		summarizeBy: sum
 		sourceColumn: txn_count
 
@@ -53,7 +53,7 @@ table dim_merchant
 
 	column is_high_risk_mcc
 		dataType: boolean
-		lineageTag: 0dc82d50-5f66-46c3-866c-f528f23ab5a2
+		lineageTag: 9443dd90-2e8b-413f-bf30-9463776383f6
 		summarizeBy: none
 		sourceColumn: is_high_risk_mcc
 
