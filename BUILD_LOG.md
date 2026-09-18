@@ -795,7 +795,89 @@ counter was simply reset to 16 so the re-seed occupies 1-16 and CDC resumes at
 
 ---
 
-## 27. Current state
+## 27. Phase 1 proven end to end
+
+Re-seeded and verified. The engine restart was safe this time because the Delta
+table was confirmed **empty first** (0 data files, 0 log commits) rather than
+assumed to be.
+
+| Step | Result |
+| --- | --- |
+| Re-upload | 10.5 GB, 29.1 min, 0 failures |
+| Schema preflight | `--check-schema` OK: 101 fields, `int64` key, order matches |
+| Re-seed ingested | **50,000,000 rows** |
+| CDC file 17 | 3 changes (ins=1 upd=1 del=1), 29.0 KB |
+| CDC file 18 | 1 change (upd=1), 29.1 KB |
+| Mirroring errors | **0** |
+| `processedRows` | 50,000,000 -> **50,000,003** |
+
+### The proof
+
+Reading the mirrored table through `delta_scan()`, which applies the
+transaction log:
+
+```
+TOTAL LIVE ROWS: 50,000,000
+
+7777777   PROOF-UPDATE-MERCHANT  424242.42  PROOF-CHANGED   <- UPDATED in place
+50000005  MIRROR TEST INSERT     12345.67   CDC-INSERTED    <- INSERTED
+3870726   (absent)                                          <- DELETED
+```
+
+Arithmetic closes exactly: 50,000,000 seed + 1 insert - 1 delete = 50,000,000.
+
+**The update and the delete are the entire argument.** A file copy can only
+append. It cannot make an existing row change its values, and it cannot make a
+row disappear. Both happened, driven by the PostgreSQL write-ahead log.
+
+### Reading a Delta table wrong, and how it looks
+
+Worth recording because it produces a convincing false negative. The first
+verification read the **raw parquet files** and appeared to show the mirror
+broken:
+
+```
+7777777  PROOF-UPDATE-MERCHANT ...   <- new version
+7777777  AGODA.COM ...               <- old version STILL THERE
+3870726  ... SETTLED                 <- "deleted" row STILL THERE
+```
+
+Nothing was wrong. Delta keeps superseded files on disk until `VACUUM`, and the
+`_delta_log` is the only thing that says which are live. Reading the parquet
+directly bypasses the log and returns every version ever written. `delta_scan()`
+applies the log and returns the correct 50,000,000.
+
+Anyone validating a lakehouse by globbing parquet files will conclude their
+pipeline is duplicating and failing to delete, and will be wrong.
+
+---
+
+## 28. Phase 1 summary
+
+```
+on-prem PostgreSQL 16
+  -> logical replication slot (test_decoding)
+  -> parse WAL changes
+  -> zstd parquet with __rowMarker__ as the final column
+  -> azcopy into the open mirroring landing zone
+  -> Fabric replication engine
+  -> Delta table in OneLake, insert / update / delete applied
+```
+
+| Stage | Measurement |
+| --- | --- |
+| Generate | 50,000,000 x 100 messy text columns, 45.0 GB, 35 min, 42,500 rows/s |
+| Load to PostgreSQL | 48 GB, 10.9 min, 76,465 rows/s |
+| Surrogate key + PK | 21.5 min (19.5 rewrite + 1.4 index, 4 parallel workers) |
+| Export to parquet | 10.5 GB, 5.6 min, 149,140 rows/s, 4.3x zstd |
+| Upload to OneLake | 29 min, ~6.3 MB/s via azcopy |
+| Fabric ingestion | 50,000,000 rows |
+| CDC latency | change visible in Fabric within ~2 min of commit |
+| CDC file size | 29 KB per batch against 700 MB seed files |
+
+---
+
+## 29. Current state
 
 **Done**
 
