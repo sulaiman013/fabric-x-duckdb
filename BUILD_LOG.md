@@ -1237,3 +1237,104 @@ What is trustworthy is the **shape**. Precision rises monotonically with the
 threshold, recall falls, and the headcount curve is steeply non-linear. Those
 relationships are what a threshold decision turns on, and they would hold under
 any sensible base rate. The absolute precision figures would not.
+
+---
+
+## 36. End-to-end UAT
+
+A structured pass over every phase, with each check either passing on evidence
+or producing a fix. Nothing was taken from an earlier section on trust.
+
+### Phase 1: mirroring
+
+| Check | Result |
+| --- | --- |
+| Replicator process alive | PASS: one genuine `python.exe` (pid 29456) |
+| Replication slot | PASS: `fabric_cdc`, 56 bytes WAL retained |
+| `wal_level` / `synchronous_commit` | PASS: `logical` / `on` |
+| Mirror status | PASS: `Replicating`, no error |
+| **Live change propagates** | **PASS**: one UPDATE plus one INSERT in PostgreSQL, `processedRows` 50,000,004 to **50,000,006** in Fabric |
+
+A first process check matched eight PIDs and looked like eight competing
+replicators, which would have been a serious defect: multiple consumers of one
+slot produce duplicate sequence numbers or lost changes. Filtering by
+executable showed seven were shell wrappers. The check now filters on
+`Name='python.exe'`.
+
+### Phase 2: transformation
+
+| Check | Result |
+| --- | --- |
+| Parser tests | PASS: 8/8 |
+| All 14 scripts parse | PASS |
+| `--check-schema` preflight | PASS |
+| Gold row parity | PASS: 49,406,790 = 50,000,000 minus 593,210, exact |
+| Orphan merchant keys in gold | PASS: 0 |
+| Deleted proof row absent from gold | PASS: 3870726 absent |
+| Inserted proof row present | PASS, with an explanation below |
+
+Row 50000005 was missing from gold and looked like a defect. It is correct
+behaviour: the first CDC demo attempt inserted an identical
+`TXN-CDC-INSERT-0001` as row 50000004, so 50000005 is an exact duplicate on
+every business column and dedup kept the lower id. The test expectation was
+wrong, not the pipeline.
+
+### Phase 3: semantic model
+
+| Check | Result |
+| --- | --- |
+| All 17 measures resolve | PASS |
+| Relationships filter | PASS: per-rule breakdown matches `star.py` to the row |
+| **Direct Lake reconciles to DuckDB** | **PASS**: Total Amount 17,808,657,055.84 on both, to the cent |
+| Rule firings | PASS: 65,088,689 on both |
+
+Filtering High Risk Rate by `channel` is flat, 2.850% to 2.851% across every
+channel. That is the uniform source data, not the model: channel and entry
+mode are independent draws, and the rules key on entry mode. Already recorded
+in `APP_DESIGN.md` section 7. The demo must not chart risk by channel.
+
+### Phase 4: application
+
+| Check | Result |
+| --- | --- |
+| HTML demo figures | **FAIL, fixed**: predated the score-driven alerting fix |
+
+The demo still carried the pre-fix numbers and had no representation of the
+corrected model. Now shows the DAX-verified measures (1,408,756 alerts raised,
+2.85%, 28.2 analyst-years, 80.18% labelled as any-rule rate) and the threshold
+table with recall and headcount per cut-off.
+
+### Documentation
+
+| Check | Result |
+| --- | --- |
+| `APP_DESIGN.md` rule table | PASS: seven active, two struck through |
+| `README.md` rule count and script inventory | **FAIL, fixed**: said nine rules, omitted `transform.py`, `rules.py`, `star.py`, `build_semantic_model.py`, `threshold_analysis.py`, no Phase 3 |
+| **`README.md` load instructions** | **FAIL, fixed**: said the table is created **UNLOGGED** |
+
+The UNLOGGED claim was the most dangerous finding of the pass. The table was
+loaded `--logged` deliberately, because logical replication never captures an
+UNLOGGED table. Anyone following the README as written would have built a
+mirror whose CDC silently saw nothing.
+
+### Repository hygiene
+
+| Check | Result |
+| --- | --- |
+| Credentials file ignored | PASS |
+| Secrets in tracked files | PASS: 0 |
+| Uncommitted changes before UAT | PASS: 0 |
+
+### One more catch, from checking before publishing
+
+The demo edits were run through `node --check` before republishing rather than
+trusting them. That found an unescaped apostrophe in `institution's` inside a
+single-quoted JavaScript string, which would have shipped a page that renders
+nothing. Rephrased to avoid the quote. Cheap check, real save.
+
+### Verdict
+
+Every functional check passed on live evidence. Three defects were found, all
+documentation or presentation rather than pipeline, and all fixed: a stale
+demo, a stale README inventory, and one README instruction that would have
+broken CDC for a reader.

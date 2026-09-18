@@ -16,8 +16,8 @@ OneLake using open mirroring**, and then doing something real with it.
 | Phase | What | Layer |
 | --- | --- | --- |
 | **1** | On-prem PostgreSQL to OneLake via open mirroring: initial seed plus continuous CDC from the write-ahead log | Bronze (raw, all TEXT) |
-| **2** | Fabric Python notebook (8 vCores) running DuckDB: cleaning, typing, conforming, star schema | Silver to Gold |
-| **3** | Direct Lake semantic model over the gold tables | Semantic |
+| **2** | DuckDB: cleaning, typing, conforming, seven measured risk rules, dedupe, star schema; Spark for the V-Ordered write | Silver to Gold |
+| **3** | Direct Lake semantic model over the gold tables: 9 tables, 8 relationships, 17 measures, verified by DAX | Semantic |
 | **4** | Fabric App: operational activities, reporting and analytics on the banking data | Application |
 
 Each phase is deliberately constrained so the next one has something honest to
@@ -64,6 +64,11 @@ duckdb in fabric/
     validate.py           profiles the output and proves the mess is real
     load_postgres.py      parallel COPY into a raw TEXT landing table
     snapshot_to_fabric.py seeds the mirror: Postgres -> parquet -> OneLake
+    transform.py          clean + conform: 5 date formats, money as text, 32 spellings of MY
+    rules.py              7 risk rules, measured and recalibrated against real fire rates
+    star.py               2 facts + 7 dimensions, explicit Unknown members, 0 null FKs
+    build_semantic_model.py  authored Direct Lake TMDL, importable with fab
+    threshold_analysis.py precision, recall and analyst headcount per alert threshold
     cdc_to_fabric.py      continuous CDC: WAL -> __rowMarker__ parquet -> OneLake
     cdc_demo.py           proves update/delete propagate, not just inserts
     verify_fabric.py      reads the Delta transaction log to check what landed
@@ -72,6 +77,7 @@ duckdb in fabric/
 D:/duckdb-fabric-data/
   csv/                    50 chunks, 45 GB    <- generated raw data
   snapshot/               16 parquet, 10.5 GB <- mirror seed
+  gold/                   9 parquet, 1.9 GB   <- star schema, uploaded to the lakehouse
 ```
 
 ### Pipeline at a glance
@@ -83,6 +89,9 @@ load_postgres.py   parallel COPY, all TEXT, LOGGED     -> landing.raw_txn (48 GB
 snapshot_to_fabric.py  DuckDB reads Postgres -> zstd parquet -> azcopy -> LandingZone
 cdc_to_fabric.py       WAL -> logical slot -> parquet + __rowMarker__ -> LandingZone
                    Fabric applies insert / update / delete to the Delta table
+transform + rules + star   DuckDB over a lakehouse shortcut to the mirror -> gold parquet
+02_vorder_write.Notebook   Spark rewrites gold as V-Ordered Delta (DuckDB cannot)
+build_semantic_model.py    Direct Lake model, 17 measures, alerts priced in analyst headcount
 ```
 
 ### Where the data lives, and why not here
@@ -145,15 +154,14 @@ localhost:5432:*:postgres:YOUR_PASSWORD
 Then:
 
 ```bash
-python scripts/load_postgres.py --path D:/duckdb-fabric-data/csv --jobs 4
+python scripts/load_postgres.py --path D:/duckdb-fabric-data/csv --jobs 6 --logged
 ```
 
-The table is created **UNLOGGED** for load speed (no WAL). Convert it
-afterwards if you want crash safety:
-
-```sql
-ALTER TABLE landing.raw_txn SET LOGGED;
-```
+**Pass `--logged`.** The default is UNLOGGED, which is faster to load but is
+never captured by logical replication, so the mirror's CDC would silently see
+nothing. Loading LOGGED also avoids rewriting a 48 GB table with
+`ALTER TABLE ... SET LOGGED` later. Measured: 50,000,000 rows in 10.9 minutes
+at 76,465 rows/s with six connections.
 
 `--resume` skips files already recorded in `landing._load_log`, so an
 interrupted load picks up where it stopped.

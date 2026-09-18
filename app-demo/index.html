@@ -230,7 +230,13 @@ tbody tr[aria-selected="true"] .aid{color:var(--accent);font-weight:600}
    3,000,000 row sample. Alert rows are representative examples built from the
    real value distributions and real stored formats, not customer records. */
 var REAL = {
-  rows:50000003, dupes:593209, dateBad:47.5, amtBad:1.3,
+  rows:50000004, dupes:593209, dateBad:47.5, amtBad:1.3,
+  // measured through the Direct Lake model by DAX, not estimated
+  model:{txns:49406790, alertsRaised:1408756, alertRate:2.85, analystYears:28.2,
+         ruleFirings:65088689, anyRuleRate:80.18, firingsPerAlert:46.2, highRisk:1408756},
+  // precision / recall / headcount per threshold, simulated outcome label
+  thresholds:[[30,'13.2M','26.8%','80.5%',106],[40,'7.1M','14.3%','63.3%',57],
+              [50,'3.5M','7.2%','46.0%',28],[60,'1.4M','2.85%','27.6%',11],[70,'441K','0.89%','12.6%',4]],
   medianAmt:88.87, p99Amt:2944.05,
   missing:[{k:'merchant_name',v:15.2},{k:'email',v:13.9},{k:'posting_date',v:5.2},{k:'txn_amount',v:1.3}],
   spell:[['addr_country',32],['txn_type',35],['card_brand',44],['merchant_category',56]],
@@ -438,7 +444,40 @@ function pipeline(){
    +'Appending files can only ever add records. Here the updated row changed in place and the deleted row disappeared, '
    +'both driven by the PostgreSQL write-ahead log. Live count after the changes: '
    +'50,000,000 seed, plus 1 insert, minus 1 delete, equals 50,000,000.</div>';
+  var M=REAL.model;
+  h+='<section class="panel"><div class="ph"><h2>Semantic model, verified by DAX over Direct Lake</h2>'
+   +'<span class="note">Nothing imported. Reconciles to DuckDB on the same gold to the cent.</span></div><div class="bars">'
+   +bar('Transactions',nf.format(M.txns),100,'')
+   +bar('Alerts raised (score &ge; 60)',nf.format(M.alertsRaised),M.alertRate,'')
+   +bar('Alert rate',M.alertRate+'%',M.alertRate,'')
+   +bar('Analyst-years to clear',M.analystYears,28,'warn')
+   +bar('Rule firings',nf.format(M.ruleFirings),100,'')
+   +bar('Any-rule rate',M.anyRuleRate+'%',M.anyRuleRate,'crit')
+   +bar('Rule firings per alert',M.firingsPerAlert,46,'')
+   +'</div></section>';
+  h+='<div class="callout"><b>The 80.18% figure was a modelling error, not a threshold to tune.</b> '
+   +'An alert is what a human works; a rule firing is a contribution to a score. Counting every firing as an alert '
+   +'implied 39.6 million alerts, roughly 317 full-time analysts. Alerting on the composite score gives 2.85%, '
+   +'eleven analysts. The 80.18% is kept and labelled honestly as the any-rule rate.</div>';
+  h+='<section class="panel"><div class="ph"><h2>Pricing the threshold</h2>'
+   +'<span class="note">Simulated outcome label, 0.083% base rate. Trust the shape, not the absolute precision.</span></div>'
+   +'<div class="tw"><table><thead><tr><th scope="col">Threshold</th><th scope="col">Alerts</th>'
+   +'<th scope="col">Alert rate</th><th scope="col">Recall</th><th scope="col">FTE analysts</th></tr></thead><tbody>';
+  REAL.thresholds.forEach(function(t){
+    var sel=t[0]===60;
+    h+='<tr'+(sel?' aria-selected="true"':'')+'><td class="mono aid">'+t[0]+'</td><td class="mono">'+t[1]+'</td>'
+      +'<td class="mono">'+t[2]+'</td><td class="mono">'+t[3]+'</td><td class="mono num '+(t[4]>50?'high':(t[4]>20?'med':'low'))+'">'+t[4]+'</td></tr>';
+  });
+  h+='</tbody></table></div></section>';
+  h+='<div class="callout"><b>There is no comfortable answer, which is the finding.</b> '
+   +'Eleven analysts catch 27.6% of fraud. Catching 80% needs 106. Every row is a staffing decision at a real institution, '
+   +'and it is why transaction monitoring runs at 90 to 95% false positives: the alternative is missing most of the fraud.</div>';
   return h;
+}
+
+function bar(label,val,pct,cls){
+  return '<div class="bar"><span>'+label+'</span><span class="track"><span class="fill '+cls+'" style="width:'
+    +Math.min(100,Math.max(2,pct))+'%"></span></span><span class="n mono">'+val+'</span></div>';
 }
 
 /* strip per view ----------------------------------------------------- */
@@ -462,7 +501,8 @@ function stripFor(v){
     +inst('Exact duplicates',nf.format(REAL.dupes),'warn')
     +inst('Median amount','RM '+REAL.medianAmt);
   return inst('Seed','10.5 GB')+inst('Ingested',nf.format(50000000),'good')
-    +inst('CDC payload','29 KB','good')+inst('Latency','~2 min');
+    +inst('CDC payload','29 KB','good')+inst('Latency','~2 min')
+    +inst('Alert rate',REAL.model.alertRate+'%','good')+inst('Analysts',Math.round(REAL.model.analystYears/2.5));
 }
 
 var VIEWS={
