@@ -73,6 +73,20 @@ duckdb in fabric/
     cdc_demo.py           proves update/delete propagate, not just inserts
     verify_fabric.py      reads the Delta transaction log to check what landed
     test_cdc_parser.py    tests for the test_decoding payload parser
+    ops_db.py             the five ops tables for write-back, DDL in one place
+    build_ops_notebook.py generates 04_ops_ddl from that DDL (SQL token exists only on capacity)
+    build_gold_notebook.py generates 01_build_gold: the DuckDB transformation as a Python notebook
+    build_readme_notebook.py generates 00_README: workspace documentation that measures itself
+    build_report.py       generates the four-page PBIP report, live on the Direct Lake model
+    bisect_measure.py     bisects a report measure against Desktop through the bridge
+    folderize_workspace.py files every workspace item into its phase folder
+  notebooks/
+    00_README.Notebook    what every item is, how the pipeline works, what it costs
+    01_build_gold.Notebook DuckDB on 8 vCores: clean, conform, score, dedupe, star
+    02_vorder_write.Notebook Spark: rewrite gold parquet as V-Ordered Delta
+    04_ops_ddl.Notebook   create the ops tables in fincrime_ops
+  udf/                    the write-back user data functions
+  report/                 the PBIP: FinCrime.pbip + FinCrime.Report
 
 D:/duckdb-fabric-data/
   csv/                    50 chunks, 45 GB    <- generated raw data

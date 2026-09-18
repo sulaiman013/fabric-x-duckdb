@@ -47,6 +47,7 @@ PLAN = [
     ]),
     ("02 Transformation", [
         ("fincrime", "Lakehouse"),
+        ("01_build_gold", "Notebook"),
         ("02_vorder_write", "Notebook"),
         ("03_verify", "Notebook"),
     ]),
@@ -66,6 +67,10 @@ PLAN = [
 
 # Auto-created children that follow their parent and cannot be moved alone.
 CHILD_TYPES = ("SQLEndpoint",)
+
+# Items that belong at the workspace root on purpose. The README is the entry
+# point and should be the first thing a reader sees, above the phase folders.
+ROOT_ITEMS = {("00_README", "Notebook")}
 
 
 def fab(*args, **kw):
@@ -127,6 +132,7 @@ def main():
     # behind at the root.
     leftover = [r for r in live
                 if (r.get("displayName"), r.get("type")) not in planned
+                and (r.get("displayName"), r.get("type")) not in ROOT_ITEMS
                 and r.get("type") not in CHILD_TYPES]
     children = [r for r in live if r.get("type") in CHILD_TYPES]
 
