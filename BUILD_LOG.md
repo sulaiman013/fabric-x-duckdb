@@ -544,7 +544,68 @@ Two platform limits worth remembering:
 
 ---
 
-## 20. Current state
+## 20. Service limits checked before committing to the seed
+
+Checked the documented mirroring limits rather than discovering them mid-upload:
+
+| Limit | Documented value | This project |
+| --- | --- | --- |
+| Change data per mirrored database per day | **1 TB** | 10.5 GB seed, well under |
+| Maximum tables per mirrored database | 500-1000 depending on source | 1 |
+| Mirrored databases are **read-only** | no calculated columns or tables | affects Phase 3 |
+
+The read-only constraint shapes the rest of the roadmap. The documentation is
+explicit: "To add calculated columns, create a Lakehouse and use shortcuts to
+reference the mirrored data, then create your calculated columns in the
+Lakehouse using notebooks or SQL." So Phase 2's DuckDB transformation work
+lands in a Lakehouse shortcutted to the mirrored data, and the Direct Lake
+model in Phase 3 is built over those gold tables, not over the mirror itself.
+
+Throttling, if the 1 TB/day ceiling is ever hit, surfaces as:
+`"The replication is being throttled and expected to continue at ..."`.
+
+---
+
+## 21. Surrogate key build
+
+| Step | Elapsed |
+| --- | --- |
+| `ADD COLUMN _mirror_row_id ... GENERATED ALWAYS AS IDENTITY` | **19.5 min** |
+| `ADD CONSTRAINT raw_txn_pk PRIMARY KEY` | with 4 parallel workers |
+
+The tablespace grew 48 -> 97 GB while both copies existed, then dropped back to
+49 GB once PostgreSQL released the original. Peak disk requirement for this
+operation is therefore a little over 2x the table size, which is worth knowing
+before running it on a volume with less headroom.
+
+The parallel workers on the index build are a direct result of the tuning in
+section 19; at the stock `maintenance_work_mem` of 64 MB this would have been a
+single-threaded external sort.
+
+---
+
+## 22. Hardening found while waiting
+
+Two defects fixed before the replicator ever ran:
+
+1. **File sequence could silently reset.** `next_sequence()` derived the next
+   20-digit file number from the landing-zone listing, but Fabric *moves*
+   processed files into `_ProcessedFiles` / `_FilesReadyToDelete`. The docs say
+   the most recent file is deliberately left behind for publishers to read, but
+   depending on that alone means one cleanup pass resets the sequence to 1 and
+   starts overwriting unconsumed changes. Now takes the high-water mark of the
+   remote listing and a locally persisted counter.
+
+2. **The `test_decoding` parser is the riskiest component**, because this
+   dataset is built to break naive parsers. Added `scripts/test_cdc_parser.py`,
+   8 cases covering escaped quotes (`''`), commas and padding inside values, the
+   empty-string versus NULL distinction that has survived the whole pipeline, a
+   value that itself looks like a column spec (`'weird[text]:value'`), and the
+   key-only payload a DELETE emits. All pass.
+
+---
+
+## 23. Current state
 
 **Done**
 
