@@ -137,13 +137,49 @@ def connect(args):
     return psycopg2.connect(**kw)
 
 
+# PostgreSQL type -> pyarrow type. The CDC files MUST match the Delta table's
+# existing schema exactly. The seed was written by DuckDB, which mapped the
+# bigint surrogate key to int64, so Delta holds it as 'long'. Writing every
+# column as string here produces:
+#   SchemaMergeFailure ... Incoming type: 'string', existing type: 'long'
+# and the change file is rejected. Everything else in this landing table really
+# is text, but deriving the mapping keeps it correct if that ever changes.
+PG_TO_ARROW = {
+    "bigint": pa.int64(),
+    "integer": pa.int32(),
+    "smallint": pa.int16(),
+    "boolean": pa.bool_(),
+    "double precision": pa.float64(),
+    "real": pa.float32(),
+}
+
+
 def table_columns(con, schema, table):
+    """Return [(column_name, arrow_type), ...] in ordinal position order."""
     cur = con.cursor()
     cur.execute(
-        "SELECT column_name FROM information_schema.columns "
+        "SELECT column_name, data_type FROM information_schema.columns "
         "WHERE table_schema=%s AND table_name=%s ORDER BY ordinal_position",
         (schema, table))
-    return [r[0] for r in cur.fetchall()]
+    return [(r[0], PG_TO_ARROW.get(r[1], pa.string())) for r in cur.fetchall()]
+
+
+def coerce(value, arrow_type):
+    """test_decoding hands back text; cast it to the column's real type."""
+    if value is None:
+        return None
+    if arrow_type == pa.string():
+        return value
+    try:
+        if arrow_type in (pa.int64(), pa.int32(), pa.int16()):
+            return int(value)
+        if arrow_type in (pa.float64(), pa.float32()):
+            return float(value)
+        if arrow_type == pa.bool_():
+            return value in ("t", "true", "TRUE", "1")
+    except (TypeError, ValueError):
+        return None
+    return value
 
 
 def setup(args):
@@ -308,17 +344,22 @@ def drain(con, args, columns):
         if "%s.%s" % (schema, table) != want:
             continue
         vals = parse_tuple(payload)
-        rec = {c: vals.get(c) for c in columns}
+        rec = {c: coerce(vals.get(c), t) for c, t in columns}
         rec[ROW_MARKER] = OP_MARKER[op]
         records.append(rec)
     return records
 
 
 def write_parquet(records, columns, path):
-    """__rowMarker__ MUST be the final column."""
-    order = list(columns) + [ROW_MARKER]
-    arrays = [pa.array([r.get(c) for r in records], pa.string()) for c in order]
-    pq.write_table(pa.table(arrays, names=order), path, compression="zstd")
+    """
+    __rowMarker__ MUST be the final column, and every other column must match
+    the Delta table's existing type or Fabric rejects the file with
+    SchemaMergeFailure.
+    """
+    names = [c for c, _ in columns] + [ROW_MARKER]
+    arrays = [pa.array([r.get(c) for r in records], t) for c, t in columns]
+    arrays.append(pa.array([r.get(ROW_MARKER) for r in records], pa.string()))
+    pq.write_table(pa.table(arrays, names=names), path, compression="zstd")
 
 
 def run(args):
@@ -336,6 +377,8 @@ def run(args):
     print("landing  : LandingZone/%s" % args.target_table)
     print("next file: %020d.parquet" % seq)
     print("columns  : %d + %s" % (len(columns), ROW_MARKER))
+    print("typed    : %s" % ", ".join("%s=%s" % (c, t) for c, t in columns
+                                      if t != pa.string()))
     print("-" * 70)
 
     idle = 0

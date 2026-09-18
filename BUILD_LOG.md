@@ -697,7 +697,105 @@ is a more interesting and more defensible story anyway.
 
 ---
 
-## 25. Current state
+## 25. Seed ingested at full scale
+
+The seed landed and Fabric materialised it:
+
+| Metric | Value |
+| --- | --- |
+| Export | 16 files, 10.5 GB, **5.6 min** (149,140 rows/s) |
+| Upload | **28.6 min** at 6.3 MB/s, 0 failures |
+| Ingestion | **50,000,000 / 50,000,000 rows** |
+| Delta table | 6 commits, 4 data files, `_delta_log` + V-Order `_index_bin` |
+
+Two behaviours confirmed exactly as documented:
+
+* Files 1-15 were consumed and moved to `_FilesReadyToDelete`, with
+  `00000000000000000016.parquet` **left behind** as the sequence reference.
+* That validated the sequencing fix from section 22: the remote listing showed
+  only file 16 and the persisted local counter also said 16, so both agreed on
+  17 as next. Relying on the folder listing alone would have been fine here, but
+  only by luck.
+
+The CDC replicator then shipped its first change file correctly:
+
+```
+00000000000000000017.parquet   3 changes  (ins=1 upd=1 del=1)   29.0 KB
+```
+
+29 KB against the seed's 700 MB files. That size difference is the whole point:
+the seed is a one-off baseline, the stream is incremental.
+
+---
+
+## 26. Two expensive lessons
+
+### 26.1 The CDC parquet schema must match the seed's schema exactly
+
+Fabric rejected file 17:
+
+```
+ErrorCode: SchemaMergeFailure ... Type mismatch for column '_mirror_row_id'.
+Incoming type: 'string', existing type: 'long'
+```
+
+The seed went through DuckDB, which mapped the `bigint` surrogate key to
+`int64`, so Delta holds it as `long`. The replicator wrote **every** column as
+`pa.string()`, including the key. Delta refused to merge.
+
+Fixed by deriving arrow types from `information_schema.columns` rather than
+assuming everything is text, and coercing decoded values accordingly. All 100
+business columns genuinely are text; only the surrogate key is not, but
+deriving the mapping keeps it correct if that ever changes.
+
+**The general rule: an open-mirroring change file must match the materialised
+table's schema exactly, not just its column names.** The seed decides the types,
+and everything after it has to agree.
+
+### 26.2 stopMirroring / startMirroring DROPS the mirrored tables
+
+This one cost a full re-upload.
+
+The earlier latched `PathNotFound` error was cleared by stopping and starting
+the mirroring engine, and that looked like a cheap, clever recovery. It worked
+because **no table had been materialised yet** — the engine simply re-read the
+landing zone and built one.
+
+Using the same trick to clear the `SchemaMergeFailure` **deleted the
+50,000,000-row Delta table**: 0 data files, 0 `_delta_log` commits. The already
+consumed seed files had been removed from `_FilesReadyToDelete`, so there was
+nothing left in the landing zone to rebuild from.
+
+**`stopMirroring` is not an error-recovery mechanism. It is destructive once
+data is materialised.** The documented recovery for a latched error is to delete
+and recreate the table folder, which also implies re-uploading. Both routes cost
+a full re-seed, so the real lesson is to avoid the error in the first place.
+
+Which is now enforced: the schemas are compared **locally**, before any upload.
+
+```
+SEED parquet : 101 fields, non-string: [('_mirror_row_id','int64')]
+CDC writer   : 101 fields + __rowMarker__, non-string: [('_mirror_row_id','int64')]
+MISMATCHES   : NONE
+ORDER MATCHES: True
+```
+
+Recovery was possible only because the 11 GB of staged parquet still existed on
+`D:`. Keeping the staging directory until the mirror is verified is not
+optional.
+
+### 26.3 Sequence gaps
+
+Deleting the rejected file 17 left a gap, and the replicator moved on to 18.
+The spec requires continuous numbering, and Fabric did not consume 18. The
+documented escape hatch is `"fileDetectionStrategy": "LastUpdateTimeFileDetection"`
+in `_metadata.json`, which reads files by timestamp instead. Here the sequence
+counter was simply reset to 16 so the re-seed occupies 1-16 and CDC resumes at
+17 with no gap.
+
+---
+
+## 27. Current state
 
 **Done**
 
