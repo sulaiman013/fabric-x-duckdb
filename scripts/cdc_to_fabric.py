@@ -182,6 +182,60 @@ def coerce(value, arrow_type):
     return value
 
 
+def check_schema(args):
+    """
+    Compare what this replicator would emit against the seed parquet that
+    defined the Delta table's schema.
+
+    Worth its own command because getting this wrong is expensive. Fabric
+    rejects a mismatched change file with SchemaMergeFailure, and the only
+    recoveries -- recreating the table folder, or restarting the mirroring
+    engine -- both destroy the materialised table and force a full re-seed.
+    Ten seconds here saves half an hour there.
+    """
+    import glob
+    import pyarrow.parquet as _pq
+
+    seeds = sorted(glob.glob(os.path.join(args.seed_dir, "*.parquet")))
+    if not seeds:
+        print("no seed parquet found in %s" % args.seed_dir)
+        return 2
+    seed = _pq.read_schema(seeds[0])
+
+    con = connect(args)
+    cols = table_columns(con, args.schema, args.table)
+    con.close()
+
+    seed_map = {f.name: str(f.type) for f in seed}
+    cdc_map = {c: str(t) for c, t in cols}
+
+    print("seed parquet : %s" % os.path.basename(seeds[0]))
+    print("  fields     : %d" % len(seed))
+    print("  non-string : %s" % [(f.name, str(f.type)) for f in seed
+                                 if str(f.type) != "string"])
+    print("cdc writer")
+    print("  fields     : %d + %s" % (len(cols), ROW_MARKER))
+    print("  non-string : %s" % [(c, str(t)) for c, t in cols
+                                 if str(t) != "string"])
+
+    missing = [k for k in seed_map if k not in cdc_map]
+    extra = [c for c, _ in cols if c not in seed_map]
+    mism = [(k, seed_map[k], cdc_map.get(k)) for k in seed_map
+            if k in cdc_map and seed_map[k] != cdc_map[k]]
+    order_ok = [f.name for f in seed] == [c for c, _ in cols]
+
+    print()
+    print("  missing in cdc : %s" % (missing or "none"))
+    print("  extra in cdc   : %s" % (extra or "none"))
+    print("  type mismatches: %s" % (mism or "none"))
+    print("  column order   : %s" % ("matches" if order_ok else "DIFFERS"))
+
+    bad = missing or extra or mism or not order_ok
+    print()
+    print("SCHEMA CHECK: %s" % ("FAILED - do not upload" if bad else "OK"))
+    return 1 if bad else 0
+
+
 def setup(args):
     con = connect(args)
     con.autocommit = True
@@ -420,6 +474,9 @@ def run(args):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--setup", action="store_true")
+    p.add_argument("--check-schema", action="store_true",
+                   help="compare the emitted schema against the seed parquet")
+    p.add_argument("--seed-dir", default="D:/duckdb-fabric-data/snapshot")
     p.add_argument("--run", action="store_true")
     p.add_argument("--status", action="store_true")
     p.add_argument("--once", action="store_true", help="drain one batch and exit")
@@ -439,6 +496,8 @@ def main():
     p.add_argument("--password", default=os.environ.get("PGPASSWORD"))
     args = p.parse_args()
 
+    if args.check_schema:
+        return check_schema(args)
     if args.setup:
         return setup(args)
     if args.status:
