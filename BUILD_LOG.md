@@ -653,7 +653,51 @@ since the export is DuckDB-side and previously ran at 151,331 rows/s.
 
 ---
 
-## 24. Current state
+## 24. Phase 2 engine research, done early on purpose
+
+Researched the Fabric Python notebook and DuckDB while the seed uploaded,
+rather than discovering the constraints during Phase 2.
+
+**Confirmed and good:**
+
+* Fabric Python notebooks are a genuine non-Spark kernel and ship with
+  **DuckDB, Polars and delta-rs preinstalled**.
+* The Python kernel defaults to 2 vCores / 16 GB but **scales to 64 vCores**,
+  set with `%%configure`. The planned 8 vCores is directly supported.
+* Lakehouse, Warehouse and SQL analytics endpoints are all reachable from the
+  Python kernel, and `notebookutils.data` allows T-SQL from Python.
+
+**Three constraints that change how Phase 2 and 3 should be built:**
+
+| Constraint | Consequence |
+| --- | --- |
+| **V-Order is Spark-only.** The kernel comparison table lists "V-order for fast Direct Lake semantic models" as supported on Spark and **not** on the Python kernel. | Gold tables written from a Python notebook are not V-Ordered, and V-Order is precisely what makes Direct Lake fast. Phase 3 needs a deliberate decision here. |
+| **DuckDB Delta writes are INSERT-only.** It requires `ATTACH ... (TYPE delta, READ_WRITE)`, has no UPDATE / DELETE / MERGE, and no schema evolution on insert. | Any SCD or merge logic in the star-schema build has to go through **delta-rs**, not DuckDB. |
+| **DuckDB INSERT never writes checkpoints**, so "the Delta transaction log grows unbounded". | Tables written by DuckDB need periodic delta-rs maintenance, otherwise reads degrade over time. |
+
+**Scale band.** Microsoft's published benchmark guidance:
+
+| Compressed data | Faster engine |
+| --- | --- |
+| under ~140 MB | single-machine Python (DuckDB, Polars) |
+| ~1-2 GB | Python still ahead |
+| **~10-13 GB** | **Spark with NEE competitive or faster; single-machine Python engines can hit out-of-memory at lower vCore counts** |
+| ~100 GB+ | Spark |
+
+This dataset is 10.5 GB compressed Parquet, 48 GB in PostgreSQL, 50M rows x 101
+columns. That lands squarely in the band where the documentation explicitly
+warns about OOM on single-machine engines. At 8 vCores the Python kernel gets
+roughly 64 GB, so DuckDB will spill to disk. Workable, but it is the edge of
+the envelope rather than the sweet spot.
+
+The honest framing for the portfolio piece is therefore "DuckDB pushed to the
+edge of its comfort zone, with delta-rs for writes and an explicit V-Order
+decision for Direct Lake", not "DuckDB is simply the better engine here". That
+is a more interesting and more defensible story anyway.
+
+---
+
+## 25. Current state
 
 **Done**
 
