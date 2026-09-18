@@ -1013,3 +1013,47 @@ accumulates an unbounded transaction log. Splitting on that boundary, DuckDB for
 the transformation and Spark for the write, took **3 minutes 22 seconds** of
 Spark time for 49.4M rows across nine tables. That is a small price for keeping
 the analytical work in DuckDB while still getting a Direct Lake ready layout.
+
+---
+
+## 32. Gold verified on capacity, not assumed
+
+Setting `spark.sql.parquet.vorder.enabled` and seeing the write succeed does not
+prove V-Order landed. `fab job run` returns job status rather than cell output,
+so a verification notebook writes its findings to `Files/verify.json`, which is
+then read back over the storage API. That pattern is worth keeping: it is the
+only way to get real output out of a CLI-triggered notebook run.
+
+| Table | Rows | Files | Size |
+| --- | --- | --- | --- |
+| `gold_fact_transaction` | **49,406,790** | 13 | 2,103.8 MB |
+| `gold_fact_alert` | 65,088,689 | 8 | 354.7 MB |
+| `gold_dim_customer` | 5,112,692 | 8 | 80.4 MB |
+| `gold_dim_card` | 588,132 | 1 | 3.9 MB |
+| `gold_dim_merchant` | 250,003 | 1 | 2.9 MB |
+| `gold_dim_channel` | 120 | 1 | 0.0 MB |
+| `gold_dim_date` | 905 | 1 | 0.0 MB |
+| `gold_dim_time` | 25 | 1 | 0.0 MB |
+| `gold_dim_risk_rule` | 7 | 1 | 0.0 MB |
+
+**V-Order confirmed.** `delta.parquet.vorder.enabled = "true"` is present as a
+table property on all nine tables. Note that `spark.conf.get` for the session
+setting returned `null` in the verifying session, which is the point: the
+session that wrote the tables is gone, and the only durable evidence is the
+property recorded on the table itself. Checking the session conf would have
+proved nothing.
+
+**Referential integrity across 49,406,790 rows: 0 orphan customer keys, 0
+merchant, 0 date.** The Unknown members added in section 30 are doing their job.
+
+Risk bands survived the write intact: 36,165,109 low, 11,832,925 medium,
+1,408,756 high.
+
+### Making a CLI-run notebook fail safely
+
+The first verification run died with
+`System_Cancelled_Session_Statements_Failed`: one statement raised, and Spark
+cancelled the whole session, so every other check was lost along with it.
+Rewritten so each check runs inside its own `attempt()` wrapper and records its
+own error. A verification script that cannot survive one failing check verifies
+nothing.
