@@ -210,3 +210,94 @@ The schema above is the specification for the DuckDB work:
 Note from the Phase 2 research: DuckDB Delta writes are INSERT-only, so any
 merge or SCD logic goes through **delta-rs**, and V-Order is not available on the
 Python kernel, which needs an explicit decision before Phase 3.
+
+---
+
+## 9. Write-back: how the operational surfaces persist
+
+The four surfaces in section 3 change state. That state has to go somewhere, and
+the obvious target is closed off.
+
+**The mirror is read-only.** The documentation is explicit that user data
+functions get "read-only access to mirrored database data", and that mirrored
+databases cannot carry calculated columns or tables. So a disposition cannot be
+written into `raw_txn`. That constraint is correct rather than inconvenient: the
+mirror is the bank's source data, and an analyst's decision is not. Writing
+decisions into the replica would corrupt the lineage that makes the mirror
+trustworthy.
+
+### The documented pattern
+
+Fabric's answer is **translytical task flows**. A button in a Power BI report
+calls a **user data function**, which writes to a read-write Fabric data source.
+User data functions have native connection management for Fabric SQL databases,
+warehouses, and lakehouse files, and the guidance is explicit: "For most
+write-back scenarios, we recommend using SQL database as your underlying data
+source. SQL databases perform well with the heavy read/write operations required
+in reporting scenarios."
+
+```
+READ PATH
+  mirrored raw_txn (read-only)
+    -> Lakehouse shortcut
+    -> DuckDB transformation (Phase 2)
+    -> gold Delta tables
+    -> Direct Lake semantic model
+    -> report
+
+WRITE PATH
+  report button / input slicer
+    -> user data function (Python, pyodbc)
+    -> Fabric SQL database
+    -> Lakehouse shortcut
+    -> Direct Lake
+    -> the same report reflects the change
+```
+
+### Why the surrogate key earns its keep twice
+
+`_mirror_row_id` was added so PostgreSQL would emit UPDATE and DELETE at all. It
+is also the join key between an analyst's decision and the transaction it was
+made against. Every write-back row references it, which is what allows an
+operational decision taken in Fabric to be traced back to a specific row that
+originated on premises.
+
+### Operational tables (Fabric SQL database, read-write)
+
+| Table | Grain | Key columns |
+| --- | --- | --- |
+| `ops.alert_disposition` | one decision on one alert | `alert_id`, `_mirror_row_id`, `disposition`, `reason`, `analyst`, `decided_at` |
+| `ops.case` | one dispute case | `case_id`, `_mirror_row_id`, `state`, `owner`, `sla_due_at`, `resolution`, `recovered_amount` |
+| `ops.case_event` | one state transition, append only | `case_id`, `from_state`, `to_state`, `actor`, `at` |
+| `ops.kyc_action` | one remediation action | `customer_id`, `action`, `owner`, `next_review_due`, `at` |
+| `ops.assignment` | current owner of a work item | `item_type`, `item_id`, `assignee`, `assigned_at` |
+
+`ops.case_event` is append-only on purpose. Regulated casework needs the history
+of how a case moved, not just where it ended up, and an append-only event table
+is also what makes the SLA clock auditable.
+
+### Functions to implement
+
+| Function | Called from | Writes |
+| --- | --- | --- |
+| `disposition_alert(alert_id, verdict, reason)` | Alert triage buttons | `ops.alert_disposition` |
+| `assign_item(item_type, item_id, assignee)` | Any queue | `ops.assignment` |
+| `advance_case(case_id, to_state, note)` | Case management | `ops.case`, `ops.case_event` |
+| `record_kyc_action(customer_id, action)` | KYC remediation | `ops.kyc_action` |
+
+Each returns a string, which is what a Power BI data function button requires.
+
+### One constraint this places on the reports
+
+Write-back visibility depends on storage mode: updated values appear immediately
+for **Direct Lake or DirectQuery**, but an import-mode report only reflects them
+after a refresh the task flow triggers. The operational surfaces must therefore
+be Direct Lake, not import. That is a design constraint on Phase 3, not a
+detail to discover later.
+
+### What the HTML demo does instead
+
+`app-demo/index.html` mutates local JavaScript state when an alert is
+dispositioned. It is a prototype of the interaction, not of the persistence, and
+it makes no network call. The table above is the specification for replacing
+that with real write-back.
