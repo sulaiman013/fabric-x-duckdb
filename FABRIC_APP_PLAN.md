@@ -183,18 +183,18 @@ settings enabled, semantic model `fincrime_model` live and DAX-verified.
 
 | Step | Work | Depends on |
 | --- | --- | --- |
-| 1 | Fabric SQL database `fincrime_ops`, tables per `APP_DESIGN.md` section 9 | nothing, works in UK South now |
-| 2 | User Data Functions: assign, disposition, escalate, bulk close | step 1 |
-| 3 | Prove write-back end to end: call a UDF, read the row back | step 2 |
-| 4 | Confirm the SQL database auto-mirrors to OneLake as Delta | step 1 |
+| 1 | **DONE** Fabric SQL database `fincrime_ops`, five tables per `APP_DESIGN.md` section 9 | nothing, works in UK South now |
+| 2 | **DONE** Five user data functions in `fincrime_fn`, bound by a scripted connection | step 1 |
+| 3 | **DONE** Write-back proven: 0 rows, write, 1 row, and a bad input rejected | step 2 |
+| 4 | **DONE** Auto-mirror confirmed, and the row read back from OneLake with DuckDB | step 1 |
 | 5 | Second user, second trial in a supported region, new workspace on it | region decision |
 | 6 | `npm create @microsoft/rayfin@latest -- fincrime-console --template dataapp --workspace <ws>` | step 5 |
 | 7 | Point the app at `fincrime_model` by share link, build the six analytics pages | step 6 |
 | 8 | Wire the four operational queues to the UDFs from step 2 | steps 2, 7 |
 | 9 | `npx rayfin up`, verify the deployed item | step 8 |
 
-Steps 1 to 4 are unblocked and can start immediately. Step 5 is the only one
-that needs a decision.
+Steps 1 to 4 are complete and verified on live evidence, recorded in
+`BUILD_LOG.md` sections 38 and 39. Step 5 is the only one that needs a decision.
 
 ### The closed loop, which is the part worth showing
 

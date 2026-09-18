@@ -1509,3 +1509,110 @@ That was the part of the plan most likely to be wishful. It is now observed.
 
 Steps 2 and 3, the User Data Functions and proving write-back end to end. Step 5
 onward still waits on the region decision.
+
+## 39. Write-back proven end to end, and the loop closed back into DuckDB
+
+Steps 2 and 3 of `FABRIC_APP_PLAN.md`. Five user data functions in `fincrime_fn`,
+bound to `fincrime_ops` through a Fabric connection created with the connections
+API rather than the portal, so the whole thing is scriptable.
+
+| Function | Writes |
+| --- | --- |
+| `disposition_alert` | `ops.alert_disposition` |
+| `assign_item` | `ops.assignment`, as a MERGE because it is a latest-state table |
+| `advance_case` | `ops.case` and `ops.case_event` in one transaction |
+| `record_kyc_action` | `ops.kyc_action` |
+| `ops_health` | nothing, returns row counts, used to prove the write |
+
+Two platform conventions are forced rather than chosen: parameter names must be
+camelCase, and every function returns a string, because that is what a Power BI
+translytical button can display as its result.
+
+### Four constraints, each found by hitting it
+
+| Error | Cause and fix |
+| --- | --- |
+| `Unsupported Argument: artifactType. Value: SQLDatabase` | a Fabric SQL database is `SqlDbNative`. The error helpfully listed every valid value. |
+| `InvalidAlphaNumericString` on the alias | connection aliases are alphanumeric only, so `fincrime_ops_conn` became `fincrimeops` |
+| `FabricUdfLibraryNotFoundInImportList` | the definition must declare `fabric-user-data-functions` in `libraries.public`. Fabric adds it itself on first publish, and an empty list on a later publish reads as *remove the SDK*, not *leave it alone*. |
+| `AliasDoesNotExist: Connection with alias name 'ALIAS'` | the good one, below |
+
+### Fabric reads the decorator, not the program
+
+The functions were written with `ALIAS = "fincrimeops"` as a module constant and
+`@udf.connection(argName="sqlDb", alias=ALIAS)`, which is ordinary Python and
+keeps one source of truth for the alias.
+
+It fails at invocation with:
+
+```
+Connection with alias name 'ALIAS' does not exist.
+Configured connection aliases for the item are: fincrimeops
+```
+
+Fabric parses the decorator **statically** and never evaluates the module, so it
+read the identifier's *name*, `ALIAS`, as the alias string. The alias has to be a
+string literal in every decorator. That is a real constraint on how these are
+factored, so the repetition is commented in place to stop a later tidy-up from
+reintroducing the bug.
+
+### A failed publish masquerading as a failed fix
+
+Worth recording as a process point rather than a technical one. The first
+redeploy carrying the alias fix failed on the library constraint above, but the
+test that followed ran anyway and returned `AliasDoesNotExist` four times. Read
+quickly, that looks like the alias fix did not work. It actually meant the fix
+was never deployed and the invocations hit the stale build.
+
+The retry therefore exports the item and greps the deployed `function_app.py`
+for the literal *before* invoking anything. Confirming what is running beats
+assuming the import took.
+
+### Proven, in sequence
+
+```
+ops_health        -> alert_disposition=0, case=0, case_event=0, kyc_action=0, assignment=0
+disposition_alert -> "Alert ALERT-TEST-001 recorded as FALSE_POSITIVE."
+ops_health        -> alert_disposition=1, case=0, case_event=0, kyc_action=0, assignment=0
+bad verdict       -> BadRequest: "verdict must be one of: CONFIRMED_FRAUD, ..."
+```
+
+The last line matters as much as the write. `UserThrownError` reaches the caller
+as a clean message rather than a stack trace, so an invocation from a pipeline or
+the public REST endpoint cannot write a state the reports do not understand.
+
+### The loop, closed
+
+OneLake then showed a **third** Delta commit on `ops/alert_disposition` and a
+parquet data file that had not existed before:
+
+```
+_delta_log/00000000000000000002.json                      1112 bytes
+part-00000-16412a4a-....c000.zstd.parquet                 3510 bytes
+```
+
+And DuckDB, the same engine that builds the gold layer, read it straight back:
+
+```
+rows read back from OneLake Delta: 1
+('ALERT-TEST-001', 12345, 'FALSE_POSITIVE', 'UAT write-back probe',
+ 'sulaiman@...onmicrosoft.com', 2026-09-18 21:07:41)
+```
+
+So the chain is complete and observed at every hop: analyst decision, to user
+data function, to Fabric SQL database, to OneLake Delta with no configuration,
+to DuckDB. `_mirror_row_id` comes back with it, which is the join key to
+`fact_transaction`.
+
+That is the loop the pipeline previously left open. The model says which alerts
+to work, the app records what the analyst decided, and the decision returns to
+the lake as data the next gold rebuild can join. Alert precision can stop being
+simulated against a seeded label and start being measured against real
+dispositions.
+
+One row of test data (`ALERT-TEST-001`, labelled `UAT write-back probe`) is left
+in place deliberately, as the evidence for the above.
+
+### Still open
+
+Steps 5 onward, which need a capacity in a region where `AppBackend` is allowed.
