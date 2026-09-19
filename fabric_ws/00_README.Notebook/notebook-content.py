@@ -54,14 +54,10 @@
 # | 02 Transformation | `03_verify` | Spark notebook | Checks the gold tables on capacity, writes `Files/verify.json` |
 # | 03 Semantic Model | `fincrime_model` | Semantic model | Direct Lake, 9 tables, 8 relationships, 17 measures |
 # | 04 Application | `FinCrime` | Report | Four pages, each one HTML visual driven by one measure |
-# | 04 Application | `fincrime_ops` | SQL database | Read-write store for analyst decisions |
-# | 04 Application | `fincrime_fn` | User data functions | Write-back functions the report's operational surfaces call |
-# | 04 Application | `04_ops_ddl` | Spark notebook | Creates the `ops` tables in `fincrime_ops` |
 # | Deprecated | `stage_lh` | Lakehouse | Empty. Created while investigating uploads, superseded |
 # 
 # The SQL analytics endpoints you see next to the lakehouses and databases are
 # created automatically with their parent and are not separate work.
-
 
 # CELL ********************
 
@@ -90,12 +86,36 @@ except ImportError:
 items = fabric.list_items()
 display(items[["Display Name", "Type", "Id"]].sort_values(["Type", "Display Name"]))
 
-# METADATA ********************
+# MARKDOWN ********************
 
-# META {
-# META   "language": "python",
-# META   "language_group": "jupyter_python"
-# META }
+# ---
+# 
+# ## The architecture, in one page
+# 
+# The whole pipeline is also drawn as an interactive, animated, single-file HTML
+# page: two views behind a segmented control, a detail card behind every
+# component, night mode, and a written explanation on the back of the card. It is
+# self-contained, so it opens from disk with no server and no network.
+# 
+# **[Open the diagram](https://github.com/sulaiman013/fabric-x-duckdb/blob/master/architecture-diagram/index.html)** &middot; source and build in
+# [`architecture-diagram/`](https://github.com/sulaiman013/fabric-x-duckdb/blob/master/architecture-diagram)
+# 
+# ### Pipeline: how 50 million rows reach a report
+# 
+# ![The pipeline view: PostgreSQL on the left, Microsoft Fabric on the right](https://raw.githubusercontent.com/sulaiman013/fabric-x-duckdb/master/architecture-diagram/shot-pipeline.png)
+# 
+# ### Transformation: what the notebook actually does
+# 
+# ![The transformation view: read, conform, score, deduplicate, build the star](https://raw.githubusercontent.com/sulaiman013/fabric-x-duckdb/master/architecture-diagram/shot-transform.png)
+# 
+# Every figure on those pages was measured on the running system and is
+# re-measured by `scripts/uat.py` on every acceptance pass. The only two things
+# marked **modelled** are the Spark cost comparison and the price per CU-hour.
+# 
+# The page is generated from `parts/` by `assemble.py` and gated by `verify.py`,
+# which drives both views in a real browser and asserts that nothing overlaps,
+# nothing escapes its container, every declared wire is actually drawn, and the
+# packets are moving.
 
 # MARKDOWN ********************
 
@@ -169,7 +189,6 @@ display(items[["Display Name", "Type", "Id"]].sort_values(["Type", "Display Name
 # **shortcut** in the `fincrime` lakehouse (`Tables/raw_txn`). A shortcut is a
 # pointer, not a copy: DuckDB reads the mirror's own Delta files.
 
-
 # MARKDOWN ********************
 
 # ### What the row count did not show
@@ -197,7 +216,6 @@ display(items[["Display Name", "Type", "Id"]].sort_values(["Type", "Display Name
 # had is a no-op, and a change that falls in the gap is lost silently. The cell
 # below measures the mirror against the source figures so the difference is
 # visible rather than assumed.
-
 
 # CELL ********************
 
@@ -228,13 +246,6 @@ elif (n - PG_ROWS, d - PG_DISTINCT) == (0, 0):
     print("mirror and source agree exactly")
 else:
     print("the difference has changed since 2026-09-19: re-measure the source before trusting either figure")
-
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "jupyter_python"
-# META }
 
 # MARKDOWN ********************
 
@@ -308,7 +319,6 @@ else:
 #   key was removed and the spill target set explicitly. Both fixes are in the
 #   notebook.
 
-
 # CELL ********************
 
 # MEASURED: what the on-capacity DuckDB run wrote about itself.
@@ -358,13 +368,6 @@ if RC:
     for smp in RC["multi_survivor_samples"]:
         print("  ", smp["txn_id"], "->", smp["rows"])
 
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "jupyter_python"
-# META }
-
 # CELL ********************
 
 # MEASURED: the on-capacity run must reproduce the verified gold layer exactly.
@@ -378,13 +381,6 @@ for t, n in B["counts"].items():
     print(f"  {t:<18} notebook {n:>12,}   verified {v if v is None else format(v, ','):>12}   {'OK' if ok else 'MISMATCH'}")
 print()
 print("every table matches the verified layer" if not bad else f"{bad} table(s) differ")
-
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "jupyter_python"
-# META }
 
 # MARKDOWN ********************
 
@@ -402,7 +398,7 @@ print("every table matches the verified layer" if not bad else f"{bad} table(s) 
 # nine parquet files and rewrites them as V-Ordered Delta tables named
 # `gold_<table>`. That is the *only* Spark work in the pipeline:
 # **3 min 53 s** wall time for 49,406,792 rows across nine tables (the latest
-# run, from the jobs API; the cost cell in section 7 reads it live). The result is **36 files, 2.5 GB** of
+# run, from the jobs API; the cost cell in section 6 reads it live). The result is **36 files, 2.5 GB** of
 # Delta in OneLake.
 # 
 # `03_verify` then reads the Delta logs on capacity and writes `Files/verify.json`
@@ -414,7 +410,6 @@ print("every table matches the verified layer" if not bad else f"{bad} table(s) 
 # immediately returns `Invalid object name`. The fix is
 # `POST .../sqlEndpoints/{id}/refreshMetadata`, which the build does before the
 # model is touched.
-
 
 # CELL ********************
 
@@ -429,13 +424,6 @@ for t in sorted(os.listdir(base)):
     files = dt.files()
     size = sum(os.path.getsize(f"{base}/{t}/{f}") for f in files) / 1e6
     print(f"  {t:<24} version {dt.version():>3}   {len(files):>3} files   {size:>8.1f} MB")
-
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "jupyter_python"
-# META }
 
 # MARKDOWN ********************
 
@@ -485,7 +473,6 @@ for t in sorted(os.listdir(base)):
 # **2.88%**, about 28 analyst-years across the period. The first is an
 # unstaffable queue that gets ignored; the second is a control that works.
 
-
 # CELL ********************
 
 # MEASURED, live: how long the model takes to answer the report's own measures.
@@ -513,13 +500,6 @@ for name, q in QUERIES.items():
     print(f"{name:<20} {len(df):>6} {times[0]:>7.2f}s {times[1]:>7.2f}s {times[2]:>7.2f}s")
 print()
 print(f"Each of these aggregates the full {B['counts']['fact_transaction']:,}-row fact table.")
-
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "jupyter_python"
-# META }
 
 # MARKDOWN ********************
 
@@ -565,54 +545,11 @@ print(f"Each of these aggregates the full {B['counts']['fact_transaction']:,}-ro
 # of fifteen visuals issues fifteen queries on open and up to fifteen more on
 # every interaction. The latency cell above is the whole per-page cost.
 
-
 # MARKDOWN ********************
 
 # ---
 # 
-# ## 6. Write-back: `fincrime_ops`, `fincrime_fn`, `04_ops_ddl`
-# 
-# A mirrored database is **read-only**, and the gold tables are derived. So the
-# report's operational surfaces (alert triage, case management, KYC actions) need
-# somewhere to *write*. That is `fincrime_ops`, a Fabric SQL database with five
-# `ops.*` tables created by `04_ops_ddl`, and `fincrime_fn`, five user data
-# functions the report calls: `disposition_alert`, `assign_item`, `advance_case`,
-# `record_kyc_action`, `ops_health`.
-# 
-# The part worth showing: a Fabric SQL database **mirrors itself to OneLake as
-# Delta automatically**, with no configuration. An analyst decision written
-# through a function lands in `fincrime_ops/Tables/ops/alert_disposition` as
-# parquet, where the next gold rebuild can join it to `fact_transaction` on
-# `_mirror_row_id`. This was proven end to end: write through the function, read
-# the row back from OneLake with DuckDB. That closes the loop most pipelines leave
-# open.
-
-# CELL ********************
-
-# MEASURED: the write-back store's own mirror, as it sits in OneLake.
-opsdb = items[items["Display Name"].eq("fincrime_ops") & items["Type"].eq("SQLDatabase")]["Id"].iloc[0]
-resp = fabric.FabricRestClient().get(f"v1/workspaces/{ws}/items/{opsdb}")
-print("fincrime_ops:", resp.json().get("displayName"), "|", resp.json().get("type"))
-try:
-    import notebookutils
-    paths = notebookutils.fs.ls(f"abfss://{ws}@onelake.dfs.fabric.microsoft.com/{opsdb}/Tables/ops")
-    for p in paths:
-        print("  mirrored Delta table:", p.name)
-except Exception as e:
-    print("  (listing the mirror needs the OneLake path to be mounted:", str(e)[:80], ")")
-
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "jupyter_python"
-# META }
-
-# MARKDOWN ********************
-
-# ---
-# 
-# ## 7. What it costs, and why this is cheaper than doing it in T-SQL
+# ## 6. What it costs, and why this is cheaper than doing it in T-SQL
 # 
 # ### The unit of money in Fabric
 # 
@@ -654,7 +591,6 @@ except Exception as e:
 # 
 # What is *not* claimed: that DuckDB beats Spark on every job. Above a single
 # node's memory, Spark wins. This job is 10.5 GB compressed and fits.
-
 
 # CELL ********************
 
@@ -732,13 +668,6 @@ print("Not priced, in the alternative's favour: a Warehouse T-SQL path would fir
 print(f"{B['counts']['fact_transaction']:,} rows into warehouse storage. Direct Lake over the")
 print("lakehouse reads the Delta files the notebook wrote, so this pipeline holds ONE copy.")
 
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "jupyter_python"
-# META }
-
 # MARKDOWN ********************
 
 # ### The bigger saving is structural, not per-run
@@ -763,7 +692,7 @@ print("lakehouse reads the Delta files the notebook wrote, so this pipeline hold
 
 # ---
 # 
-# ## 8. Reproducing the whole thing
+# ## 7. Reproducing the whole thing
 # 
 # | Step | Command |
 # | --- | --- |
@@ -792,10 +721,3 @@ with open(path, "w") as fh:
     fh.write("README run at " + datetime.now(timezone.utc).isoformat(timespec="seconds") + chr(10) + chr(10))
     fh.write(_LOG.getvalue())
 print("evidence written:", path)
-
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "jupyter_python"
-# META }

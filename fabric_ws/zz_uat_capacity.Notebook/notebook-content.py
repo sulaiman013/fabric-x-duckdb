@@ -34,9 +34,7 @@
 PG_ROWS = 50000001
 PG_DISTINCT = 49406791
 PROBE_ROW = 12345678
-PROBE_TOKEN = "UAT-20260919-092459"
-WS_ID = "7e0f6e0d-3730-449f-8be6-2beaec28587b"
-OPS_DB_ID = "446f966e-7df5-4284-a279-fdb32ef3b8a1"
+PROBE_TOKEN = "UAT-20260919-100609"
 BASELINE_FIRINGS = {"R02": 10118821, "R03": 3624172, "R04": 10164144, "R05": 864962, "R06": 13697031, "R07": 2126003, "R09": 24580346}
 TABLES = ["fact_transaction", "fact_alert", "dim_customer", "dim_merchant", "dim_channel", "dim_card", "dim_date", "dim_time", "dim_risk_rule"]
 import json, os, time
@@ -185,124 +183,11 @@ check("P2.7", "V-Order is enabled on every gold table", c_delta_vorder)
 check("P2.8", "referential integrity: no orphan dimension keys", c_orphans)
 check("P2.9", "all nine gold Delta tables read back", c_delta_readable)
 
-# ---------------------------------------------------------------- phase 4
-ALERT_ID = "UAT-" + time.strftime("%Y%m%d-%H%M%S", time.gmtime())
-# The ops tables are Delta inside the SQL database's own OneLake area, not in
-# this lakehouse. That path is what closes the loop, so it is read directly.
-OPS_TABLES = ("abfss://" + WS_ID + "@onelake.dfs.fabric.microsoft.com/"
-              + OPS_DB_ID + "/Tables/ops")
-
-def _functions():
-    import notebookutils
-    return notebookutils.udf.getFunctions("fincrime_fn")
-
-def _health(fns):
-    """ops_health returns 'alert_disposition=0, case=0, ...', not JSON."""
-    raw = fns.ops_health()
-    if isinstance(raw, dict):
-        return raw
-    out = {}
-    for part in str(raw).split(","):
-        if "=" in part:
-            k, v = part.split("=", 1)
-            try:
-                out[k.strip()] = int(v.strip())
-            except ValueError:
-                out[k.strip()] = v.strip()
-    return out
-
-def c_writeback():
-    """The whole loop: read state, write through the function, read it again."""
-    fns = _functions()
-    NOTES["udf_functions"] = sorted(f["Name"] for f in fns.functionDetails)
-    before = _health(fns)
-    msg = fns.disposition_alert(alertId=ALERT_ID, mirrorRowId=12345678,
-                                verdict="FALSE_POSITIVE",
-                                reason="end-to-end UAT",
-                                analyst="uat")
-    after = _health(fns)
-    NOTES["ops_before"], NOTES["ops_after"], NOTES["udf_message"] = before, after, msg
-    delta = after.get("alert_disposition", 0) - before.get("alert_disposition", 0)
-    return delta == 1, "alert_disposition {} to {} ({:+d}); returned {!r}".format(
-        before.get("alert_disposition"), after.get("alert_disposition"),
-        delta, str(msg)[:120])
-
-def c_validation_rejects():
-    """A bad verdict must come back as a clean error, not a stack trace, or the
-    public endpoint could write a state the reports do not understand."""
-    try:
-        _functions().disposition_alert(alertId=ALERT_ID + "-BAD", mirrorRowId=1,
-                                       verdict="NOT_A_VERDICT", reason="x",
-                                       analyst="uat")
-    except Exception as e:
-        txt = str(e)
-        return ("verdict must be one of" in txt or "NOT_A_VERDICT" in txt,
-                "rejected: {}".format(txt[:200]))
-    return False, "an invalid verdict was accepted"
-
-def c_loop_closes():
-    """The written row must be visible in OneLake as Delta with no replication
-    configured at all. A Fabric SQL database mirrors itself, and that is what
-    turns an analyst's click into something the next gold rebuild can join."""
-    import notebookutils
-    listing = [f.name.strip("/") for f in notebookutils.fs.ls(OPS_TABLES)]
-    if "alert_disposition" not in listing:
-        return False, "ops/alert_disposition is not in OneLake: {}".format(listing)
-    # Read it with DuckDB, not delta-rs. Fabric's self-mirrored SQL tables
-    # enable the deletionVectors reader feature, which DuckDB supports and
-    # delta-rs does not (Microsoft Learn, "Choosing a notebook kernel"). Using
-    # DuckDB is also the point: it is the engine that builds the gold layer, so
-    # this proves the decision is joinable on the next rebuild.
-    import shutil
-    # The SQL database's self-mirroring into OneLake is asynchronous, so the
-    # row is not there the instant the function returns. Poll for it and
-    # report how long it took, which is the number worth knowing.
-    dest = "/tmp/uat_ops"
-    t0 = time.time()
-    rows, total, local = [], 0, None
-    for attempt in range(12):
-        shutil.rmtree(dest, ignore_errors=True)
-        os.makedirs(dest, exist_ok=True)
-        notebookutils.fs.cp(OPS_TABLES + "/alert_disposition", "file:" + dest,
-                            recurse=True)
-        # cp nests the source directory inside the destination, so find the
-        # level that actually holds the transaction log rather than assume it.
-        local = next((root for root, dirs, _ in os.walk(dest)
-                      if "_delta_log" in dirs), None)
-        if local:
-            rows = con.execute(
-                "SELECT alert_id, _mirror_row_id, disposition, analyst FROM "
-                "delta_scan('" + local + "') WHERE alert_id = '"
-                + ALERT_ID + "'").fetchall()
-            total = con.execute(
-                "SELECT count(*) FROM delta_scan('" + local + "')").fetchone()[0]
-            if rows:
-                break
-        time.sleep(20)
-    lag = round(time.time() - t0, 1)
-    if not local:
-        return False, "the copy produced no _delta_log under {}: {}".format(
-            dest, os.listdir(dest))
-    NOTES["ops_delta_rows"] = total
-    NOTES["ops_mirror_lag_s"] = lag
-    NOTES["ops_delta_row_for_this_run"] = [[str(x) for x in r] for r in rows]
-    if not rows:
-        return False, ("this run's decision had not reached OneLake after {}s; "
-                       "alert_disposition holds {} older row(s)".format(lag, total))
-    return True, (
-        "{} ops tables mirror themselves to OneLake with no configuration; this "
-        "run's decision arrived in {}s and DuckDB read it back from {} row(s): {}"
-        .format(len(listing), lag, total, [[str(x) for x in r] for r in rows]))
-
-check("P4.1", "write-back through a user data function", c_writeback)
-check("P4.2", "invalid input is rejected as a handled error", c_validation_rejects)
-check("P4.3", "the written decision reaches OneLake as Delta", c_loop_closes)
-
 # ---------------------------------------------------------------- result
 passed = sum(1 for c in CHECKS if c["ok"])
 RESULT = {"ran_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
           "passed": passed, "total": len(CHECKS),
-          "checks": CHECKS, "notes": NOTES, "uat_alert_id": ALERT_ID}
+          "checks": CHECKS, "notes": NOTES}
 with open("/lakehouse/default/Files/uat_capacity.json", "w") as fh:
     json.dump(RESULT, fh, indent=1, default=str)
 print()
