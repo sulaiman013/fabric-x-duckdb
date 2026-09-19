@@ -148,6 +148,13 @@ def phase0():
     def c_tracked_secrets():
         hits = []
         for rel in git("ls-files").splitlines():
+            # Paths leak too. A Fabric SQL database exports one file per
+            # database principal, named after the principal, so the account UPN
+            # arrived in this public repository as a filename. Contents-only
+            # scanning never looked at it.
+            for pat, label in SECRET_PATTERNS:
+                if re.search(pat, rel):
+                    hits.append("%s (in the PATH) %s" % (rel, label))
             path = os.path.join(ROOT, rel)
             if not os.path.isfile(path) or os.path.getsize(path) > 4_000_000:
                 continue

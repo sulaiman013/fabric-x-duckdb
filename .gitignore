@@ -48,3 +48,11 @@ desktop.ini
 # ---------------------------------------------------------------------------
 notebooks/zz_uat_capacity.Notebook/
 uat_capacity.json
+
+# ---------------------------------------------------------------------------
+# Fabric Git integration syncs the workspace into fabric_ws/. A SQL database
+# item exports one file per database principal, named after the principal, so
+# the account UPN ends up in both a filename and a CREATE USER statement with
+# its SID. This repository is PUBLIC. Keep the whole Security folder out.
+# ---------------------------------------------------------------------------
+fabric_ws/**/*.SQLDatabase/Security/

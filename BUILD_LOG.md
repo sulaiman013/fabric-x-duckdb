@@ -2057,3 +2057,38 @@ The last row is the one that keeps the rest honest. The README is now checked
 against the repository on every run: a script added without a line in the
 layout fails the pass, and so does a row count quoted in prose that the
 pipeline no longer produces.
+
+### The worst finding came after the pass was green
+
+Fabric's Git integration was connected to this repository while the UAT was
+being written, and it synced the whole workspace into `fabric_ws/`. A Fabric
+**SQL database** item exports one file per database principal, named after the
+principal. So this arrived in a public repository:
+
+```
+fabric_ws/04 Application/fincrime_ops.SQLDatabase/Security/
+    sulaiman@<tenant>.onmicrosoft.com.sql
+```
+
+containing `CREATE USER [sulaiman@<tenant>.onmicrosoft.com] WITH SID = 0x...`,
+and `ops.sql` beside it authorising the schema to the same principal. The
+account UPN, which this project had deliberately kept out of every document,
+was published as a filename, a statement and a SID.
+
+The secret scanner did not catch it, and the reason is worth more than the
+finding: **it read file contents and never looked at the paths.** A check that
+examines what is inside tracked files is blind to a repository whose *shape* is
+the disclosure. It now scans both, and the same patterns applied to paths flag
+this immediately.
+
+The Security folder is untracked and ignored going forward. Two honest caveats:
+the commit that introduced it is already public, so the history still contains
+it unless it is rewritten; and Fabric will re-export the folder on the next
+workspace sync, so the ignore rule is what keeps it out rather than a one-time
+deletion.
+
+The general lesson, which applies to every Git-integrated Fabric workspace:
+**syncing a workspace publishes its security model.** A SQL database exports
+its principals, a lakehouse exports its shortcut definitions, and a mirrored
+database exports its `mirroring.json`. None of that is secret by intent, and
+all of it is identifying.
