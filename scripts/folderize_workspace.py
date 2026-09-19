@@ -11,7 +11,7 @@ item list reads the same way the README and BUILD_LOG do:
   01 Ingestion        the mirrored database: on-prem Postgres landing in OneLake
   02 Transformation   the gold lakehouse and the notebooks that build and check it
   03 Semantic Model   the Direct Lake model
-  04 Application      report, write-back store, functions, and their DDL notebook
+  04 Application      the report that consumes the model
   Deprecated          items superseded or left over from investigation
 
 What counts as deprecated
@@ -56,9 +56,6 @@ PLAN = [
     ]),
     ("04 Application", [
         ("FinCrime", "Report"),
-        ("fincrime_ops", "SQLDatabase"),
-        ("fincrime_fn", "UserDataFunction"),
-        ("04_ops_ddl", "Notebook"),
     ]),
     ("Deprecated", [
         ("stage_lh", "Lakehouse"),

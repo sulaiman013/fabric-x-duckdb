@@ -12,9 +12,9 @@ Direct Lake specifics
 * Every partition is `mode: directLake` with `expressionSource: DatabaseQuery`,
   pointing at the lakehouse SQL endpoint. No data is imported; the model reads
   the V-Ordered Delta files in place.
-* Direct Lake is not optional here. The write-back design in APP_DESIGN.md
-  section 9 depends on an analyst's decision being visible immediately, and an
-  import-mode model only reflects a write after a refresh.
+* Direct Lake is not optional here. The gold layer is rebuilt in place, and an
+  import-mode model would only show a rebuild after a refresh while holding a
+  second copy of 49.4M rows behind every report.
 * `discourageImplicitMeasures` is set so report authors use the defined
   measures rather than dragging raw columns onto a visual, which is how a
   semantic model stays a contract instead of a pile of columns.

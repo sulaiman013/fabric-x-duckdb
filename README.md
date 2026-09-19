@@ -6,9 +6,9 @@ to an interactive Power BI report, built on Microsoft Fabric, over
 is explained below, in the order the data flows through them.
 
 **How to read it.** Each section answers three questions: what the item is,
-how it works, and what it cost. The cost figures are not typed in: the
-`00_README` notebook in the workspace reads the measurements the pipeline
-itself wrote and times the model live. Run it and the numbers refresh.
+how it works, and what it cost. The cost figures are not typed in: the cells
+in this notebook read the measurements the pipeline itself wrote, and time the
+model live. Run the notebook and the numbers refresh.
 
 **One rule about numbers.** Anything marked **measured** was observed on this
 workspace and says where. Anything marked **modelled** is an estimate and says
@@ -29,13 +29,39 @@ fact.
 | 02 Transformation | `03_verify` | Spark notebook | Checks the gold tables on capacity, writes `Files/verify.json` |
 | 03 Semantic Model | `fincrime_model` | Semantic model | Direct Lake, 9 tables, 8 relationships, 17 measures |
 | 04 Application | `FinCrime` | Report | Four pages, each one HTML visual driven by one measure |
-| 04 Application | `fincrime_ops` | SQL database | Read-write store for analyst decisions |
-| 04 Application | `fincrime_fn` | User data functions | Write-back functions the report's operational surfaces call |
-| 04 Application | `04_ops_ddl` | Spark notebook | Creates the `ops` tables in `fincrime_ops` |
 | Deprecated | `stage_lh` | Lakehouse | Empty. Created while investigating uploads, superseded |
 
 The SQL analytics endpoints you see next to the lakehouses and databases are
 created automatically with their parent and are not separate work.
+
+---
+
+## The architecture, in one page
+
+The whole pipeline is also drawn as an interactive, animated, single-file HTML
+page: two views behind a segmented control, a detail card behind every
+component, night mode, and a written explanation on the back of the card. It is
+self-contained, so it opens from disk with no server and no network.
+
+**[Open the diagram](https://github.com/sulaiman013/fabric-x-duckdb/blob/master/architecture-diagram/index.html)** &middot; source and build in
+[`architecture-diagram/`](https://github.com/sulaiman013/fabric-x-duckdb/blob/master/architecture-diagram)
+
+### Pipeline: how 50 million rows reach a report
+
+![The pipeline view: PostgreSQL on the left, Microsoft Fabric on the right](https://raw.githubusercontent.com/sulaiman013/fabric-x-duckdb/master/architecture-diagram/shot-pipeline.png)
+
+### Transformation: what the notebook actually does
+
+![The transformation view: read, conform, score, deduplicate, build the star](https://raw.githubusercontent.com/sulaiman013/fabric-x-duckdb/master/architecture-diagram/shot-transform.png)
+
+Every figure on those pages was measured on the running system and is
+re-measured by `scripts/uat.py` on every acceptance pass. The only two things
+marked **modelled** are the Spark cost comparison and the price per CU-hour.
+
+The page is generated from `parts/` by `assemble.py` and gated by `verify.py`,
+which drives both views in a real browser and asserts that nothing overlaps,
+nothing escapes its container, every declared wire is actually drawn, and the
+packets are moving.
 
 ---
 
@@ -129,9 +155,9 @@ that predates the slot is only removable by re-seeding.
 The rule this teaches is cheap to follow and expensive to skip: **create the
 replication slot before taking the snapshot**, so nothing can fall between
 them. An insert seen twice is an upsert, a delete of a row the snapshot never
-had is a no-op, and a change that falls in the gap is lost silently. The
-notebook measures the mirror against the source figures on every run, so the
-difference is visible rather than assumed.
+had is a no-op, and a change that falls in the gap is lost silently. The cell
+below measures the mirror against the source figures so the difference is
+visible rather than assumed.
 
 ---
 
@@ -217,7 +243,7 @@ So the final write is handed to Spark, on purpose. `02_vorder_write` reads the
 nine parquet files and rewrites them as V-Ordered Delta tables named
 `gold_<table>`. That is the *only* Spark work in the pipeline:
 **3 min 53 s** wall time for 49,406,792 rows across nine tables (the latest
-run, from the jobs API; the cost cell in section 7 reads it live). The result is **36 files, 2.5 GB** of
+run, from the jobs API; the cost cell in section 6 reads it live). The result is **36 files, 2.5 GB** of
 Delta in OneLake.
 
 `03_verify` then reads the Delta logs on capacity and writes `Files/verify.json`
@@ -320,26 +346,7 @@ every interaction. The latency cell above is the whole per-page cost.
 
 ---
 
-## 6. Write-back: `fincrime_ops`, `fincrime_fn`, `04_ops_ddl`
-
-A mirrored database is **read-only**, and the gold tables are derived. So the
-report's operational surfaces (alert triage, case management, KYC actions) need
-somewhere to *write*. That is `fincrime_ops`, a Fabric SQL database with five
-`ops.*` tables created by `04_ops_ddl`, and `fincrime_fn`, five user data
-functions the report calls: `disposition_alert`, `assign_item`, `advance_case`,
-`record_kyc_action`, `ops_health`.
-
-The part worth showing: a Fabric SQL database **mirrors itself to OneLake as
-Delta automatically**, with no configuration. An analyst decision written
-through a function lands in `fincrime_ops/Tables/ops/alert_disposition` as
-parquet, where the next gold rebuild can join it to `fact_transaction` on
-`_mirror_row_id`. This was proven end to end: write through the function, read
-the row back from OneLake with DuckDB. That closes the loop most pipelines leave
-open.
-
----
-
-## 7. What it costs, and why this is cheaper than doing it in T-SQL
+## 6. What it costs, and why this is cheaper than doing it in T-SQL
 
 ### The unit of money in Fabric
 
@@ -357,10 +364,10 @@ from Microsoft Learn:
 ### The build, measured
 
 Capacity bills a notebook for its **session wall time**, startup included, not
-for the seconds its cells were busy. So the cost is priced on the wall time of
-each notebook's most recent completed run, read live from the jobs API, with
-the build's own in-notebook work time beside it so the startup overhead is
-visible rather than hidden. Change `PRICE_PER_CU_HOUR` to your region's
+for the seconds its cells were busy. So the cell below prices the wall time of
+each notebook's most recent completed run, read live from the jobs API, and
+prints the build's own in-notebook work time beside it so the startup overhead
+is visible rather than hidden. Change `PRICE_PER_CU_HOUR` to your region's
 pay-as-you-go rate (Azure pricing page: *Microsoft Fabric*; the default below
 is a US list price and is an **assumption**).
 
@@ -402,7 +409,7 @@ running before believing any of this.
 
 ---
 
-## 8. Reproducing the whole thing
+## 7. Reproducing the whole thing
 
 | Step | Command |
 | --- | --- |

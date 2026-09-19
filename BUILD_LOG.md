@@ -1072,9 +1072,10 @@ measures has to be written.
 | Relationships | 8 |
 | Measures | 13 |
 
-Direct Lake is not a preference here. The write-back design in section 9 of
-`APP_DESIGN.md` depends on an analyst's disposition being visible immediately,
-and an import-mode model only reflects a write after a refresh.
+Direct Lake is not a preference here. The gold layer is rebuilt in place and
+the model must reflect it without an import step; an import-mode model only
+shows a rebuild after a refresh, and would put a second copy of 49.4M rows
+behind every report.
 
 `discourageImplicitMeasures` is set so authors use the defined measures instead
 of dragging raw columns onto visuals. Surrogate keys are `summarizeBy: none`,
@@ -1293,17 +1294,6 @@ channel. That is the uniform source data, not the model: channel and entry
 mode are independent draws, and the rules key on entry mode. Already recorded
 in `APP_DESIGN.md` section 7. The demo must not chart risk by channel.
 
-### Phase 4: application
-
-| Check | Result |
-| --- | --- |
-| HTML demo figures | **FAIL, fixed**: predated the score-driven alerting fix |
-
-The demo still carried the pre-fix numbers and had no representation of the
-corrected model. Now shows the DAX-verified measures (1,408,756 alerts raised,
-2.85%, 28.2 analyst-years, 80.18% labelled as any-rule rate) and the threshold
-table with recall and headcount per cut-off.
-
 ### Documentation
 
 | Check | Result |
@@ -1325,301 +1315,13 @@ mirror whose CDC silently saw nothing.
 | Secrets in tracked files | PASS: 0 |
 | Uncommitted changes before UAT | PASS: 0 |
 
-### One more catch, from checking before publishing
-
-The demo edits were run through `node --check` before republishing rather than
-trusting them. That found an unescaped apostrophe in `institution's` inside a
-single-quoted JavaScript string, which would have shipped a page that renders
-nothing. Rephrased to avoid the quote. Cheap check, real save.
-
 ### Verdict
 
-Every functional check passed on live evidence. Three defects were found, all
-documentation or presentation rather than pipeline, and all fixed: a stale
-demo, a stale README inventory, and one README instruction that would have
-broken CDC for a reader.
-
-## 37. Phase 4 research: the Fabric App is region-blocked, and the probe proved it
-
-Researched how to build a Fabric App, then stopped reading and probed the
-tenant, because a note in memory from June said East US was blocked for Fabric
-Apps and East US is now supported. Region tables go stale.
-
-### The probe
-
-Four `POST /workspaces/{ws}/items` calls with different type names:
-
-| Type | Response |
-| --- | --- |
-| `App` | 400 `InvalidItemType` |
-| `FabricApp` | 400 `InvalidItemType` |
-| `DataApp` | 400 `InvalidItemType` |
-| **`AppBackend`** | **403 `FeatureNotAvailable`** |
-
-That contrast is the entire diagnostic, and it is worth more than the docs. Three
-invented names are rejected as *invalid types*. The fourth is recognised as a
-real type and then refused as an *unavailable feature*. So the item type is
-`AppBackend`, the name is right, and something other than naming is refusing it.
-
-### Ruling out the tenant settings
-
-Both settings the docs name as prerequisites were already on:
-
-| Setting | State |
-| --- | --- |
-| `AppBackendTenant` (Enable Fabric App Items, preview) | enabled |
-| `DatasetExecuteQueries` (Semantic Model Execute Queries REST API) | enabled |
-
-So the 403 is not a tenant setting. It is the region. `capacityRegion` is
-**UK South**, which the published table lists as "Not available: Fabric App
-(preview)".
-
-My first reading of this was wrong and worth recording. I assumed a trial
-capacity inherits the tenant home region and concluded there was no free way
-around it. A trial actually offers a **region dropdown at activation**; the home
-region is only the default. Region is a choice.
-
-The real constraint is narrower: our trial already exists, it is UK South, and
-it is the capacity holding the mirror, the lakehouse, the gold layer and the
-model. Moving a workspace with Fabric items across regions requires deleting
-every Fabric item first, so re-regioning this trial means destroying Phases 1
-to 3. The existing trial stays put. The app needs a *second* capacity, and since
-a trial is one per **user** rather than per tenant, and this is a self-created
-trial tenant we control the directory of, a second user can start a second trial
-in a supported region for free.
-
-### What is available here, also by probe
-
-| Type | Response |
-| --- | --- |
-| `UserDataFunction` | 201 Created |
-| `SQLDatabase` | 202 Accepted |
-
-Both probe items were deleted immediately after the test. This is the finding
-that matters, because the write-back design in `APP_DESIGN.md` section 9 needs
-exactly those two item types and they work here today. The operational half of
-Phase 4 is not blocked. Only the application shell is.
-
-### The consequence, which turned out to be good news
-
-The `dataapp` template reads its semantic model over the Execute DAX Queries
-REST API. That is an authenticated network call, not a OneLake-local read, so
-the app does not have to sit in the same region as the data. An `AppBackend` in
-a supported region can query `fincrime_model` in UK South.
-
-Only the thin shell moves. The 49.4M-row gold layer, the Direct Lake model and
-the mirror stay where they are, and the 29-minute seed is never repeated.
-
-### Plan
-
-Written up in `FABRIC_APP_PLAN.md`: nine steps, of which steps 1 to 4 (Fabric
-SQL database, User Data Functions, proving write-back, confirming the automatic
-OneLake mirror) are unblocked and can start now. Step 5 is a capacity in a
-supported region and is the only step gated on a decision.
-
-The part worth building is the closed loop. A Fabric SQL database auto-mirrors
-to OneLake as Delta with no configuration, so a disposition written through a
-User Data Function becomes data in the lake, which the next gold rebuild can
-join back to `fact_alert`. Alert precision then stops being simulated against a
-seeded label and starts being measured against what analysts actually decided.
-
-## 38. The operational store, and the closed loop proved rather than asserted
-
-Steps 1 and 4 of `FABRIC_APP_PLAN.md`. Both are unblocked in UK South, so they
-went ahead while the region question stayed open.
-
-### The store
-
-`fincrime_ops`, a Fabric SQL database. Unlike the mirrored database, which is
-read-only by design, this one is read-write, and it holds the state the console
-produces: alert dispositions, dispute cases and their transitions, KYC actions,
-and who owns what. Five tables, per `APP_DESIGN.md` section 9.
-
-Two of them carry `_mirror_row_id`. No subset of the 100 business columns is
-unique, so the surrogate key added for mirroring is the only stable handle back
-to a specific source row. It earns its keep a second time here.
-
-### The obstacle: there is no local credential for SQL
-
-The obvious approach was to run the DDL from this machine over pyodbc, reusing
-the Fabric CLI's cached token rather than prompting for a second login. That
-failed, and the reason is worth recording.
-
-`fab auth login` writes an MSAL cache to `~/.config/fab/cache.bin`, DPAPI
-encrypted. Reading it through `FilePersistenceWithDataProtection` works, and the
-account is there. But the cache contains:
-
-| Section | Contents |
-| --- | --- |
-| `AccessToken` | three, for storage, the Fabric API and ARM |
-| `RefreshToken` | **none** |
-
-Without a refresh token, `acquire_token_silent` cannot mint a token for a new
-audience, and a SQL connection needs `https://database.windows.net`. Three
-cached access tokens for the wrong audiences are no help. There is also no
-DDL-over-REST endpoint for a Fabric SQL database, so `fab api` cannot stand in.
-
-### The fix: run it where the credential exists
-
-A notebook runs on the capacity, where `notebookutils.credentials.getToken`
-issues exactly that audience. So `04_ops_ddl.Notebook` does the work, and
-`fab job run` makes it repeatable rather than a one-off.
-
-The DDL is not copied into the notebook. `scripts/build_ops_notebook.py`
-generates the notebook from the `DDL` list in `scripts/ops_db.py`, so the local
-tool and the deployed notebook cannot drift apart. Same pattern as
-`build_semantic_model.py` generating TMDL. Every statement guards on existence,
-so a re-run is safe.
-
-### Verified, not assumed
-
-The job reported `Completed` in 14 seconds, which is fast enough for a Spark
-start to be suspicious, so the status was not taken as proof. The tables were
-checked independently through the OneLake filesystem API:
-
-```
-Tables/ops/alert_disposition   _delta_log/00000000000000000000.json, ...0001.json
-Tables/ops/assignment          _delta_log/...
-Tables/ops/case                _delta_log/...
-Tables/ops/case_event          _delta_log/...
-Tables/ops/kyc_action          _delta_log/...
-```
-
-Five tables, ten Delta commits.
-
-### Which also settles step 4
-
-That listing is the evidence for the closed loop, and it cost nothing extra to
-obtain. A Fabric SQL database **mirrors itself to OneLake as Delta with no
-configuration at all**: nothing was set up, no replication was started, and the
-tables appeared under `Tables/ops/` as Delta the moment they existed. The
-landing zone and `Files/Monitoring/replicator.json` alongside them are the
-mirroring machinery, running unasked.
-
-So a disposition written through a User Data Function into `fincrime_ops` lands
-in OneLake as data, where the next gold rebuild can join it back to
-`fact_alert`. The model says which alerts to work, the app records what the
-analyst decided, and that decision becomes an input to the next model. Alert
-precision stops being simulated against a seeded label and starts being measured
-against what analysts actually did.
-
-That was the part of the plan most likely to be wishful. It is now observed.
-
-### Still open
-
-Steps 2 and 3, the User Data Functions and proving write-back end to end. Step 5
-onward still waits on the region decision.
-
-## 39. Write-back proven end to end, and the loop closed back into DuckDB
-
-Steps 2 and 3 of `FABRIC_APP_PLAN.md`. Five user data functions in `fincrime_fn`,
-bound to `fincrime_ops` through a Fabric connection created with the connections
-API rather than the portal, so the whole thing is scriptable.
-
-| Function | Writes |
-| --- | --- |
-| `disposition_alert` | `ops.alert_disposition` |
-| `assign_item` | `ops.assignment`, as a MERGE because it is a latest-state table |
-| `advance_case` | `ops.case` and `ops.case_event` in one transaction |
-| `record_kyc_action` | `ops.kyc_action` |
-| `ops_health` | nothing, returns row counts, used to prove the write |
-
-Two platform conventions are forced rather than chosen: parameter names must be
-camelCase, and every function returns a string, because that is what a Power BI
-translytical button can display as its result.
-
-### Four constraints, each found by hitting it
-
-| Error | Cause and fix |
-| --- | --- |
-| `Unsupported Argument: artifactType. Value: SQLDatabase` | a Fabric SQL database is `SqlDbNative`. The error helpfully listed every valid value. |
-| `InvalidAlphaNumericString` on the alias | connection aliases are alphanumeric only, so `fincrime_ops_conn` became `fincrimeops` |
-| `FabricUdfLibraryNotFoundInImportList` | the definition must declare `fabric-user-data-functions` in `libraries.public`. Fabric adds it itself on first publish, and an empty list on a later publish reads as *remove the SDK*, not *leave it alone*. |
-| `AliasDoesNotExist: Connection with alias name 'ALIAS'` | the good one, below |
-
-### Fabric reads the decorator, not the program
-
-The functions were written with `ALIAS = "fincrimeops"` as a module constant and
-`@udf.connection(argName="sqlDb", alias=ALIAS)`, which is ordinary Python and
-keeps one source of truth for the alias.
-
-It fails at invocation with:
-
-```
-Connection with alias name 'ALIAS' does not exist.
-Configured connection aliases for the item are: fincrimeops
-```
-
-Fabric parses the decorator **statically** and never evaluates the module, so it
-read the identifier's *name*, `ALIAS`, as the alias string. The alias has to be a
-string literal in every decorator. That is a real constraint on how these are
-factored, so the repetition is commented in place to stop a later tidy-up from
-reintroducing the bug.
-
-### A failed publish masquerading as a failed fix
-
-Worth recording as a process point rather than a technical one. The first
-redeploy carrying the alias fix failed on the library constraint above, but the
-test that followed ran anyway and returned `AliasDoesNotExist` four times. Read
-quickly, that looks like the alias fix did not work. It actually meant the fix
-was never deployed and the invocations hit the stale build.
-
-The retry therefore exports the item and greps the deployed `function_app.py`
-for the literal *before* invoking anything. Confirming what is running beats
-assuming the import took.
-
-### Proven, in sequence
-
-```
-ops_health        -> alert_disposition=0, case=0, case_event=0, kyc_action=0, assignment=0
-disposition_alert -> "Alert ALERT-TEST-001 recorded as FALSE_POSITIVE."
-ops_health        -> alert_disposition=1, case=0, case_event=0, kyc_action=0, assignment=0
-bad verdict       -> BadRequest: "verdict must be one of: CONFIRMED_FRAUD, ..."
-```
-
-The last line matters as much as the write. `UserThrownError` reaches the caller
-as a clean message rather than a stack trace, so an invocation from a pipeline or
-the public REST endpoint cannot write a state the reports do not understand.
-
-### The loop, closed
-
-OneLake then showed a **third** Delta commit on `ops/alert_disposition` and a
-parquet data file that had not existed before:
-
-```
-_delta_log/00000000000000000002.json                      1112 bytes
-part-00000-16412a4a-....c000.zstd.parquet                 3510 bytes
-```
-
-And DuckDB, the same engine that builds the gold layer, read it straight back:
-
-```
-rows read back from OneLake Delta: 1
-('ALERT-TEST-001', 12345, 'FALSE_POSITIVE', 'UAT write-back probe',
- 'sulaiman@...onmicrosoft.com', 2026-09-18 21:07:41)
-```
-
-So the chain is complete and observed at every hop: analyst decision, to user
-data function, to Fabric SQL database, to OneLake Delta with no configuration,
-to DuckDB. `_mirror_row_id` comes back with it, which is the join key to
-`fact_transaction`.
-
-That is the loop the pipeline previously left open. The model says which alerts
-to work, the app records what the analyst decided, and the decision returns to
-the lake as data the next gold rebuild can join. Alert precision can stop being
-simulated against a seeded label and start being measured against real
-dispositions.
-
-One row of test data (`ALERT-TEST-001`, labelled `UAT write-back probe`) is left
-in place deliberately, as the evidence for the above.
-
-### Still open
-
-Steps 5 onward, which need a capacity in a region where `AppBackend` is allowed.
-
----
-
-## 40. The transformation had never run on Fabric. Now it has, and it found four bugs
+Every functional check passed on live evidence. Two defects were found, both
+documentation rather than pipeline, and both fixed: a stale README inventory,
+and one README instruction that would have broken CDC for a reader.
+
+## 37. The transformation had never run on Fabric. Now it has, and it found four bugs
 
 Writing the README notebook forced a question this log had answered without
 anyone reading the answer back: where did the gold layer actually come from?
@@ -1882,7 +1584,7 @@ the table and is labelled as such in the notebook.
 every item in the order the data flows: mirroring mechanics in plain terms and
 the fidelity finding above, the transformation, the V-Order handoff, how Direct
 Lake actually works (transcoding and framing, from Microsoft Learn rather than
-memory), the report technique, write-back, and the cost model. Its code cells
+memory), the report technique, and the cost model. Its code cells
 measure rather than assert: they list the workspace live, query the mirror's
 own status and count it against the source, read `build_gold.json` and
 `verify.json` and compare them, check the run's per-rule firings against run 2,
@@ -1926,11 +1628,11 @@ make it so.
   did not, and no check in that section could have seen it.
 ---
 
-## 41. The acceptance pass became a program, and it found three things
+## 38. The acceptance pass became a program, and it found three things
 
 Section 36 was a UAT in the sense that a careful person sat down and checked
 everything once. That is worth doing, and it is not repeatable. By the time
-section 40 had changed the transformation, the parquet, the mirror and four
+section 37 had changed the transformation, the parquet, the mirror and four
 documents, nothing section 36 established could be relied on any more.
 
 So the pass is now a program: `scripts/uat.py`, **39 checks** over the whole
@@ -1939,9 +1641,9 @@ pipeline, which writes `UAT.md` and exits non-zero if anything failed.
 ### How it is split, and why
 
 Some checks have no local equivalent. The mirror's *content* as opposed to its
-status counter, the gold parquet's physical types, the Delta tables' V-Order
-properties, and anything touching the ops database all have to run inside the
-capacity. So the pass has two halves:
+status counter, the gold parquet's physical types and the Delta tables'
+V-Order properties all have to be read from inside the capacity. So the pass
+has two halves:
 
 * `scripts/uat.py` runs locally: the repository, PostgreSQL, the replicator,
   the semantic model over DAX, the report's files, and the documentation;
@@ -1981,7 +1683,7 @@ that quietly corrupts the thing it is testing is worse than no test.
 
 **A README that told the reader to build a broken mirror.** The reproduction
 steps ran `snapshot_to_fabric.py` before `cdc_to_fabric.py --setup`, which is
-precisely the mistake section 40 spent a night diagnosing. The same document
+precisely the mistake section 37 spent a night diagnosing. The same document
 warned about it in bold two screens higher and then instructed the opposite.
 Corrected to slot first, then snapshot, with the reason inline.
 
@@ -1995,32 +1697,15 @@ the commands underneath it were not.
 the workspace. It had been created there and never exported, so the repository
 described a three-notebook Phase 2 and shipped two. Exported and committed.
 
-**The ops mirror is asynchronous, and now that is a measured number.** The
-write-back check wrote a decision through the user data function, confirmed the
-row count moved, and then failed, because it read OneLake the instant the
-function returned and the row was not there yet. That is not a defect; a Fabric
-SQL database mirroring itself to OneLake is eventually consistent, and nothing
-had ever said how eventual. The check now polls and reports the lag. Measured:
-**25.7 seconds** from the analyst's decision to DuckDB reading it back out of
-Delta.
-
-### Two engine facts worth keeping
-
-**delta-rs cannot read the ops tables; DuckDB can.** The first attempt at the
-loop check used `deltalake` and failed with
-`DeltaProtocolError: The table has set these reader features: {'deletionVectors'}`.
-Fabric's self-mirrored SQL tables enable deletion vectors, which DuckDB reads
-and delta-rs does not (Microsoft Learn, *Choosing a notebook kernel*, which
-tabulates exactly this). Using DuckDB is the better choice regardless, because
-it is the engine that builds the gold layer, so the check proves the decision
-is joinable on the next rebuild rather than merely present.
+### One engine fact worth keeping
 
 **`notebookutils.fs.cp` nests the source inside the destination.** Copying a
 Delta directory and then scanning the destination gives
-`No files in log segment`, because the table landed one level deeper. The check
-now walks for the directory that actually contains `_delta_log`.
+`No files in log segment`, because the table landed one level deeper. Anything
+that copies a Delta table out of OneLake has to walk for the directory that
+actually contains `_delta_log` rather than assume its path.
 
-### Five bugs in the harness itself
+### Four bugs in the harness itself
 
 Worth recording, because a test that cries wolf gets switched off by its owner
 within a week.
@@ -2031,7 +1716,6 @@ within a week.
 | "every script fails to compile" | `py_compile(cfile=os.devnull)` refuses to write to `NUL` on Windows; compiling the source text directly is simpler and faster |
 | "00_README has no configure magic" | not every Python notebook needs to request vCores. The real invariant is that a `%%configure` must be **cell 0**, because Fabric ignores it anywhere else, and that is what is checked now |
 | "the capacity notebook did not start" | `fab job start` prints the job id two ways and splits them across stdout and stderr, so matching one phrasing lost the id of a job that had genuinely started |
-| "ops_health returned no JSON" | it returns `alert_disposition=0, case=0, ...`, which is a perfectly good return value and simply not the one the check assumed |
 
 The first three are the interesting class: every one of them reported a defect
 in code that was correct. A false failure costs the same investigation as a
@@ -2062,18 +1746,18 @@ pipeline no longer produces.
 
 Fabric's Git integration was connected to this repository while the UAT was
 being written, and it synced the whole workspace into `fabric_ws/`. A Fabric
-**SQL database** item exports one file per database principal, named after the
-principal. So this arrived in a public repository:
+**SQL database** item exports one file per database principal, **named after
+the principal**, so a path of this shape arrived in a public repository:
 
 ```
-fabric_ws/04 Application/fincrime_ops.SQLDatabase/Security/
+fabric_ws/<folder>/<db>.SQLDatabase/Security/
     sulaiman@<tenant>.onmicrosoft.com.sql
 ```
 
 containing `CREATE USER [sulaiman@<tenant>.onmicrosoft.com] WITH SID = 0x...`,
-and `ops.sql` beside it authorising the schema to the same principal. The
-account UPN, which this project had deliberately kept out of every document,
-was published as a filename, a statement and a SID.
+and a sibling file authorising a schema to the same principal. The account UPN,
+which this project had deliberately kept out of every document, was published
+as a filename, a statement and a SID.
 
 The secret scanner did not catch it, and the reason is worth more than the
 finding: **it read file contents and never looked at the paths.** A check that

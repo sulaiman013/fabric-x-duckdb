@@ -1,0 +1,39 @@
+
+/* --- v2 additions: three views share one shell ------------------------------
+   .seg already existed in the brand CSS; it is wired up here for the first time.
+   Everything else re-uses the v1 components (.plat, .node, .chip, .flow, .kpis). */
+.ctl{top:158px;right:48px}
+.head{right:520px}
+.seg button{padding:8px 15px;font-size:11.5px}
+/* a node that is a stage in a pipeline rather than a system: same card, no icon plate */
+.node.stage{padding:10px 10px 9px;flex-direction:row;gap:12px;justify-content:flex-start;text-align:left}
+.node.stage .t,.node.stage .s{text-align:left}
+.tx{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;max-width:100%}
+.node.stage .tx{align-items:flex-start}
+.node.stage .t,.node.stage .s{white-space:normal}
+.node.stage .plate{width:44px;height:44px;border-radius:10px}
+.node.stage .plate .ico{width:26px;height:26px}
+.node .num{position:absolute;left:8px;top:7px;width:19px;height:19px;border-radius:50%;background:var(--green-bg);
+  border:1px solid var(--green-line);color:var(--green-ink);font-size:10px;font-weight:700;display:grid;place-items:center}
+.node.gate .num{background:var(--amber-bg);border-color:var(--amber-line);color:var(--amber-ink)}
+/* a small labelled band inside a container, for grouping stages */
+.band{position:absolute;z-index:1;border:1px dashed var(--border);border-radius:10px;background:transparent}
+.band .bt{position:absolute;left:12px;top:-8px;background:var(--white);padding:0 7px;font-family:var(--mono);font-size:9.5px;letter-spacing:1.2px;
+  text-transform:uppercase;color:var(--muted);font-weight:600}
+
+/* The platform's own components are line art in the accent green; vendor glyphs keep their colour.
+   There is no base .ico rule in the brand sheet, so this must be declared explicitly
+   or the paths fall back to a solid black fill. */
+.ico.gl{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;color:var(--green-ink)}
+.plate .ico.gl{stroke-width:1.4}
+.chip .ico.gl{stroke-width:1.7}
+.src .ico.gl{color:var(--pg)}
+
+/* --- additions for this deck ------------------------------------------------
+   The back face gains sub-headings inside the two-column argument section, and
+   the source tiles here carry a rule id rather than a vendor logo, so they need
+   the accent colour rather than the PostgreSQL blue. */
+.bwrap h3{font-family:var(--serif);font-size:17px;font-weight:400;margin:14px 0 6px;color:var(--ink)}
+.bwrap .two p{font-size:12.5px;line-height:1.6;color:var(--body);margin:0 0 10px}
+.src .ico.gl{color:var(--green-ink)}
+.src .nm{white-space:nowrap}

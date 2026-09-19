@@ -7,9 +7,9 @@ Phase 2 gold layer: dimensions and facts for the Financial Crime Ops model.
 Grain decisions, which are the part worth arguing about
 -------------------------------------------------------
 * `fact_transaction` is one row per `_mirror_row_id`. That is the surrogate key
-  added so PostgreSQL would emit UPDATE and DELETE, and it is also the join key
-  the write-back layer uses to tie an analyst's decision to a transaction. Using
-  anything else would break that chain.
+  added so PostgreSQL would emit UPDATE and DELETE, and it is the only stable
+  handle back to a specific source row, because no subset of the 100 business
+  columns is unique.
 * `fact_alert` is one row per rule firing, not per transaction. A transaction
   that trips three rules produces three alert rows. That is what makes "which
   rules earn their keep" answerable without unpivoting at query time.

@@ -56,3 +56,7 @@ uat_capacity.json
 # its SID. This repository is PUBLIC. Keep the whole Security folder out.
 # ---------------------------------------------------------------------------
 fabric_ws/**/*.SQLDatabase/Security/
+
+# Build output of the architecture diagram. index.html is the deliverable and is
+# tracked; template.html is an intermediate and a second full copy of the page.
+architecture-diagram/template.html

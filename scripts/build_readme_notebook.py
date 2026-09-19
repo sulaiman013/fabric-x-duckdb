@@ -121,9 +121,6 @@ fact.
 | 02 Transformation | `03_verify` | Spark notebook | Checks the gold tables on capacity, writes `Files/verify.json` |
 | 03 Semantic Model | `fincrime_model` | Semantic model | Direct Lake, %(model_tables)s tables, %(model_rels)s relationships, %(model_measures)s measures |
 | 04 Application | `FinCrime` | Report | Four pages, each one HTML visual driven by one measure |
-| 04 Application | `fincrime_ops` | SQL database | Read-write store for analyst decisions |
-| 04 Application | `fincrime_fn` | User data functions | Write-back functions the report's operational surfaces call |
-| 04 Application | `04_ops_ddl` | Spark notebook | Creates the `ops` tables in `fincrime_ops` |
 | Deprecated | `stage_lh` | Lakehouse | Empty. Created while investigating uploads, superseded |
 
 The SQL analytics endpoints you see next to the lakehouses and databases are
@@ -155,6 +152,38 @@ except ImportError:
     import sempy.fabric as fabric
 items = fabric.list_items()
 display(items[["Display Name", "Type", "Id"]].sort_values(["Type", "Display Name"]))
+"""))
+
+    # =======================================================================
+    A(md("""
+---
+
+## The architecture, in one page
+
+The whole pipeline is also drawn as an interactive, animated, single-file HTML
+page: two views behind a segmented control, a detail card behind every
+component, night mode, and a written explanation on the back of the card. It is
+self-contained, so it opens from disk with no server and no network.
+
+**[Open the diagram](https://github.com/sulaiman013/fabric-x-duckdb/blob/master/architecture-diagram/index.html)** &middot; source and build in
+[`architecture-diagram/`](https://github.com/sulaiman013/fabric-x-duckdb/blob/master/architecture-diagram)
+
+### Pipeline: how 50 million rows reach a report
+
+![The pipeline view: PostgreSQL on the left, Microsoft Fabric on the right](https://raw.githubusercontent.com/sulaiman013/fabric-x-duckdb/master/architecture-diagram/shot-pipeline.png)
+
+### Transformation: what the notebook actually does
+
+![The transformation view: read, conform, score, deduplicate, build the star](https://raw.githubusercontent.com/sulaiman013/fabric-x-duckdb/master/architecture-diagram/shot-transform.png)
+
+Every figure on those pages was measured on the running system and is
+re-measured by `scripts/uat.py` on every acceptance pass. The only two things
+marked **modelled** are the Spark cost comparison and the price per CU-hour.
+
+The page is generated from `parts/` by `assemble.py` and gated by `verify.py`,
+which drives both views in a real browser and asserts that nothing overlaps,
+nothing escapes its container, every declared wire is actually drawn, and the
+packets are moving.
 """))
 
     # =======================================================================
@@ -440,7 +469,7 @@ So the final write is handed to Spark, on purpose. `02_vorder_write` reads the
 nine parquet files and rewrites them as V-Ordered Delta tables named
 `gold_<table>`. That is the *only* Spark work in the pipeline:
 **%(vorder_txt)s** wall time for %(gold_rows)s rows across nine tables (the latest
-run, from the jobs API; the cost cell in section 7 reads it live). The result is **%(gold_files)s files, %(gold_delta_gb)s GB** of
+run, from the jobs API; the cost cell in section 6 reads it live). The result is **%(gold_files)s files, %(gold_delta_gb)s GB** of
 Delta in OneLake.
 
 `03_verify` then reads the Delta logs on capacity and writes `Files/verify.json`
@@ -591,46 +620,11 @@ every interaction. The latency cell above is the whole per-page cost.
 """ % F))
 
     # =======================================================================
-    A(md("""
----
-
-## 6. Write-back: `fincrime_ops`, `fincrime_fn`, `04_ops_ddl`
-
-A mirrored database is **read-only**, and the gold tables are derived. So the
-report's operational surfaces (alert triage, case management, KYC actions) need
-somewhere to *write*. That is `fincrime_ops`, a Fabric SQL database with five
-`ops.*` tables created by `04_ops_ddl`, and `fincrime_fn`, five user data
-functions the report calls: `disposition_alert`, `assign_item`, `advance_case`,
-`record_kyc_action`, `ops_health`.
-
-The part worth showing: a Fabric SQL database **mirrors itself to OneLake as
-Delta automatically**, with no configuration. An analyst decision written
-through a function lands in `fincrime_ops/Tables/ops/alert_disposition` as
-parquet, where the next gold rebuild can join it to `fact_transaction` on
-`_mirror_row_id`. This was proven end to end: write through the function, read
-the row back from OneLake with DuckDB. That closes the loop most pipelines leave
-open.
-"""))
-
-    A(code("""
-# MEASURED: the write-back store's own mirror, as it sits in OneLake.
-opsdb = items[items["Display Name"].eq("fincrime_ops") & items["Type"].eq("SQLDatabase")]["Id"].iloc[0]
-resp = fabric.FabricRestClient().get(f"v1/workspaces/{ws}/items/{opsdb}")
-print("fincrime_ops:", resp.json().get("displayName"), "|", resp.json().get("type"))
-try:
-    import notebookutils
-    paths = notebookutils.fs.ls(f"abfss://{ws}@onelake.dfs.fabric.microsoft.com/{opsdb}/Tables/ops")
-    for p in paths:
-        print("  mirrored Delta table:", p.name)
-except Exception as e:
-    print("  (listing the mirror needs the OneLake path to be mounted:", str(e)[:80], ")")
-"""))
-
     # =======================================================================
     A(md("""
 ---
 
-## 7. What it costs, and why this is cheaper than doing it in T-SQL
+## 6. What it costs, and why this is cheaper than doing it in T-SQL
 
 ### The unit of money in Fabric
 
@@ -774,7 +768,7 @@ running before believing any of this.
     A(md("""
 ---
 
-## 8. Reproducing the whole thing
+## 7. Reproducing the whole thing
 
 | Step | Command |
 | --- | --- |

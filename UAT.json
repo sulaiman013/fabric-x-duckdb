@@ -1,6 +1,6 @@
 {
- "ran_at_utc": "2026-09-19 09:24:07Z",
- "passed": 39,
+ "ran_at_utc": "2026-09-19 10:05:16Z",
+ "passed": 36,
  "failed": 0,
  "skipped": 1,
  "checks": [
@@ -20,7 +20,7 @@
    "id": "0.3",
    "name": "every script compiles",
    "state": "PASS",
-   "detail": "all 24 scripts parse"
+   "detail": "all 22 scripts parse"
   },
   {
    "id": "0.4",
@@ -32,7 +32,7 @@
    "id": "0.5",
    "name": "every notebook parses and declares its kernel",
    "state": "PASS",
-   "detail": "all 7 notebooks parse and declare their kernel"
+   "detail": "all 6 notebooks parse and declare their kernel"
   },
   {
    "id": "1.1",
@@ -62,7 +62,7 @@
    "id": "1.5",
    "name": "the mirror reports Replicating",
    "state": "PASS",
-   "detail": "raw_txn status=Replicating processedRows=50000021"
+   "detail": "raw_txn status=Replicating processedRows=50000022"
   },
   {
    "id": "1.6",
@@ -80,7 +80,7 @@
    "id": "1.8",
    "name": "a live source change reaches the replication engine",
    "state": "PASS",
-   "detail": "set merchant_name=UAT-20260919-092459; processedRows 50,000,021 to 50,000,022 in 73s"
+   "detail": "set merchant_name=UAT-20260919-100609; processedRows 50,000,022 to 50,000,023 in 148s"
   },
   {
    "id": "P1.1",
@@ -92,7 +92,7 @@
    "id": "P1.2",
    "name": "the live PostgreSQL change is visible in OneLake",
    "state": "PASS",
-   "detail": "row 12345678 merchant_name = 'UAT-20260919-092459', expected 'UAT-20260919-092459'"
+   "detail": "row 12345678 merchant_name = 'UAT-20260919-100609', expected 'UAT-20260919-100609'"
   },
   {
    "id": "P2.1",
@@ -149,24 +149,6 @@
    "detail": "9 gold Delta tables, versions [1]"
   },
   {
-   "id": "P4.1",
-   "name": "write-back through a user data function",
-   "state": "PASS",
-   "detail": "alert_disposition 5 to 6 (+1); returned 'Alert UAT-20260919-092854 recorded as FALSE_POSITIVE.'"
-  },
-  {
-   "id": "P4.2",
-   "name": "invalid input is rejected as a handled error",
-   "state": "PASS",
-   "detail": "rejected: Request to webapi/capacities/98FE2433-911E-45EE-8C65-775DB11700E4/workloads/FuncSet/FuncSetService/automatic/functionsets/9dc3c86a-730b-40ef-86d2-8efc8b447960/functions/disposition_alert/invoke?worksp"
-  },
-  {
-   "id": "P4.3",
-   "name": "the written decision reaches OneLake as Delta",
-   "state": "PASS",
-   "detail": "5 ops tables mirror themselves to OneLake with no configuration; this run's decision arrived in 25.8s and DuckDB read it back from 6 row(s): [['UAT-20260919-092854', '12345678', 'FALSE_POSITIVE', 'uat']]"
-  },
-  {
    "id": "3.1",
    "name": "the model is authored as Direct Lake",
    "state": "PASS",
@@ -188,7 +170,7 @@
    "id": "3.4",
    "name": "report queries answer in seconds, not minutes",
    "state": "PASS",
-   "detail": "headline KPIs 1 rows [2.59, 2.83, 2.96]; overview cube 2508 rows [3.11, 3.29, 3.19]; rules by band 12 rows [2.94, 3.11, 2.84] (each includes ~2s of CLI startup)"
+   "detail": "headline KPIs 1 rows [2.86, 2.95, 2.92]; overview cube 2508 rows [3.82, 3.74, 3.82]; rules by band 12 rows [3.06, 3.54, 2.85] (each includes ~2s of CLI startup)"
   },
   {
    "id": "4.1",
@@ -230,19 +212,19 @@
    "id": "5.2",
    "name": "the README still warns about UNLOGGED",
    "state": "PASS",
-   "detail": "the README still tells the reader to pass --logged"
+   "detail": "the README still warns that logical replication never captures an UNLOGGED table"
   },
   {
    "id": "5.3",
    "name": "the README quotes the numbers this run measured",
    "state": "PASS",
-   "detail": "the README quotes the measured ['gold rows', 'source rows']"
+   "detail": "the README quotes this run's gold rows, duplicates removed"
   },
   {
    "id": "5.4",
-   "name": "the README layout matches what is in the repository",
+   "name": "the README is the workspace notebook, not a second copy",
    "state": "PASS",
-   "detail": "the layout matches the repository (31 items)"
+   "detail": "README.md is exactly the notebook's 10 markdown cells"
   }
  ],
  "capacity": {
@@ -479,38 +461,6 @@
     "gold_fact_transaction",
     1,
     14
-   ]
-  ],
-  "udf_functions": [
-   "advance_case",
-   "assign_item",
-   "disposition_alert",
-   "ops_health",
-   "record_kyc_action"
-  ],
-  "ops_before": {
-   "alert_disposition": 5,
-   "case": 0,
-   "case_event": 0,
-   "kyc_action": 0,
-   "assignment": 0
-  },
-  "ops_after": {
-   "alert_disposition": 6,
-   "case": 0,
-   "case_event": 0,
-   "kyc_action": 0,
-   "assignment": 0
-  },
-  "udf_message": "Alert UAT-20260919-092854 recorded as FALSE_POSITIVE.",
-  "ops_delta_rows": 6,
-  "ops_mirror_lag_s": 25.8,
-  "ops_delta_row_for_this_run": [
-   [
-    "UAT-20260919-092854",
-    "12345678",
-    "FALSE_POSITIVE",
-    "uat"
    ]
   ]
  }
