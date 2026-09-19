@@ -1,0 +1,224 @@
+table fact_transaction
+	lineageTag: 3bbc94be-7dcf-4e65-87e4-10e207701b71
+
+	measure Transactions = COUNTROWS ( fact_transaction )
+		formatString: #,0
+		lineageTag: 95a99461-9635-42a7-9890-7a9901d3cb00
+
+	measure 'Total Amount' = SUM ( fact_transaction[txn_amount] )
+		formatString: "RM "#,0.00
+		lineageTag: 7f9ad41b-8e3f-4b7d-8479-ad70efe7248c
+
+	measure 'Distinct Customers' = DISTINCTCOUNT ( fact_transaction[customer_key] )
+		formatString: #,0
+		lineageTag: 22a6d5ed-f840-4cf2-9af5-01b1fbc2c5d6
+
+	measure 'Average Risk Score' = AVERAGE ( fact_transaction[risk_score] )
+		formatString: #,0.0
+		lineageTag: 8acbb41c-0eae-4f50-a819-0402dc4d9e86
+
+	measure 'High Risk Transactions' = CALCULATE ( [Transactions], fact_transaction[risk_band] = "HIGH" )
+		formatString: #,0
+		lineageTag: 23899e14-4f65-4b81-9301-0bf83e27919a
+
+	measure 'High Risk Rate' = DIVIDE ( [High Risk Transactions], [Transactions] )
+		formatString: 0.00%
+		lineageTag: ed873cd8-6d72-4cea-8af9-3b7ff93bf612
+
+	measure 'Exposure at Risk' = CALCULATE ( [Total Amount], fact_transaction[risk_band] = "HIGH" )
+		formatString: "RM "#,0
+		lineageTag: 7bd025c2-f614-4002-9028-ebd8a5776b1f
+
+	measure 'Approval Rate' = DIVIDE ( CALCULATE ( [Transactions], fact_transaction[auth_approved] = TRUE () ), CALCULATE ( [Transactions], NOT ISBLANK ( fact_transaction[auth_approved] ) ) )
+		formatString: 0.0%
+		lineageTag: fd803617-ada1-4cc8-88cc-2037a621cd4e
+
+	measure 'Cross Border Amount' = CALCULATE ( [Total Amount], fact_transaction[txn_currency] <> "MYR" )
+		formatString: "RM "#,0
+		lineageTag: 49954222-de4c-4e2d-bf86-b864fc15faf9
+
+	measure 'Alerts Raised' = CALCULATE ( [Transactions], fact_transaction[risk_band] = "HIGH" )
+		formatString: #,0
+		lineageTag: d8e5ae5e-b90b-4909-bede-0e4043028527
+
+	measure 'Alert Rate' = DIVIDE ( [Alerts Raised], [Transactions] )
+		formatString: 0.00%
+		lineageTag: 1639e745-4121-44a7-8da1-22382f3973d0
+
+	measure 'Analyst Years to Clear' = DIVIDE ( [Alerts Raised], 50000 )
+		formatString: #,0.0
+		lineageTag: 8e04e8f6-5f56-4da3-ab93-94be6651a6da
+
+	column _mirror_row_id
+		dataType: int64
+		isHidden
+		lineageTag: 4950b021-1762-4cdc-a4c5-acc94d3d79b8
+		summarizeBy: none
+		sourceColumn: _mirror_row_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column txn_id
+		dataType: string
+		lineageTag: f2577901-29d7-4abf-a96f-046ffe68fa95
+		summarizeBy: none
+		sourceColumn: txn_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column date_key
+		dataType: int64
+		isHidden
+		lineageTag: 16c92b98-a41c-4582-b8d0-c50624b1bd5b
+		summarizeBy: none
+		sourceColumn: date_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column time_key
+		dataType: int64
+		isHidden
+		lineageTag: a15ef926-b25f-4342-9259-843703a69c99
+		summarizeBy: none
+		sourceColumn: time_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column customer_key
+		dataType: int64
+		isHidden
+		lineageTag: a355483c-d339-45d6-a1e3-361066392795
+		summarizeBy: none
+		sourceColumn: customer_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column merchant_key
+		dataType: int64
+		isHidden
+		lineageTag: 2324b2ad-4c86-46c0-94bc-f734cb080a9a
+		summarizeBy: none
+		sourceColumn: merchant_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column channel_key
+		dataType: int64
+		isHidden
+		lineageTag: ce873125-7d40-4f39-b586-353e02558614
+		summarizeBy: none
+		sourceColumn: channel_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column card_key
+		dataType: int64
+		isHidden
+		lineageTag: 2f958f65-9a6a-401a-a23c-81f610ff1397
+		summarizeBy: none
+		sourceColumn: card_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column txn_ts
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: f825748e-978a-49d3-aaf2-d744f7f44ecf
+		summarizeBy: none
+		sourceColumn: txn_ts
+
+		annotation SummarizationSetBy = Automatic
+
+	column txn_type
+		dataType: string
+		lineageTag: c6a50095-f51d-40cd-b4fe-e65c996b5534
+		summarizeBy: none
+		sourceColumn: txn_type
+
+		annotation SummarizationSetBy = Automatic
+
+	column txn_status
+		dataType: string
+		lineageTag: cbcc18ec-e06d-4668-bbc0-8077fdb0c3f2
+		summarizeBy: none
+		sourceColumn: txn_status
+
+		annotation SummarizationSetBy = Automatic
+
+	column txn_amount
+		dataType: decimal
+		formatString: #,0.00
+		lineageTag: 7ba2918a-b746-483b-b440-29260c30cf2f
+		summarizeBy: sum
+		sourceColumn: txn_amount
+
+		annotation SummarizationSetBy = Automatic
+
+	column txn_currency
+		dataType: string
+		lineageTag: 30990684-50bb-4d54-a826-bda7531ab437
+		summarizeBy: none
+		sourceColumn: txn_currency
+
+		annotation SummarizationSetBy = Automatic
+
+	column amount_local
+		dataType: decimal
+		formatString: #,0.00
+		lineageTag: e20c5206-1e0f-4e0e-b4cb-b22965d01300
+		summarizeBy: sum
+		sourceColumn: amount_local
+
+		annotation SummarizationSetBy = Automatic
+
+	column fee_amount
+		dataType: decimal
+		formatString: #,0.00
+		lineageTag: 5b5f775c-0a93-419e-92dc-3664dd7f3410
+		summarizeBy: sum
+		sourceColumn: fee_amount
+
+		annotation SummarizationSetBy = Automatic
+
+	column auth_approved
+		dataType: boolean
+		lineageTag: 5f6a8b55-670e-45f5-8afe-838e5fb921d3
+		summarizeBy: none
+		sourceColumn: auth_approved
+
+		annotation SummarizationSetBy = Automatic
+
+	column risk_score
+		dataType: int64
+		formatString: #,0
+		lineageTag: cde96fa5-117d-4d1d-af0f-c67708825fb5
+		summarizeBy: sum
+		sourceColumn: risk_score
+
+		annotation SummarizationSetBy = Automatic
+
+	column rules_fired
+		dataType: int64
+		formatString: #,0
+		lineageTag: 5acc505c-ad3c-4b7f-b58d-8d51c263f78b
+		summarizeBy: sum
+		sourceColumn: rules_fired
+
+		annotation SummarizationSetBy = Automatic
+
+	column risk_band
+		dataType: string
+		lineageTag: f8d6a698-b0ae-4cf1-a1ce-b9bc6a0c2b72
+		summarizeBy: none
+		sourceColumn: risk_band
+
+		annotation SummarizationSetBy = Automatic
+
+	partition fact_transaction = entity
+		mode: directLake
+		source
+			entityName: gold_fact_transaction
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

@@ -1,0 +1,69 @@
+table dim_merchant
+	lineageTag: 875b301d-4d25-49b1-810d-a467f2e7d5fd
+
+	column merchant_key
+		dataType: int64
+		isHidden
+		lineageTag: a68ac896-aca6-4837-8e77-7d058d88fd5c
+		summarizeBy: none
+		sourceColumn: merchant_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column merchant_id
+		dataType: string
+		lineageTag: de3838f0-f716-4aa2-8b8a-a31a4c3725a5
+		summarizeBy: none
+		sourceColumn: merchant_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column merchant_name
+		dataType: string
+		lineageTag: da451dac-c35f-4375-bef3-cc1b98250dc6
+		summarizeBy: none
+		sourceColumn: merchant_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column merchant_mcc
+		dataType: string
+		lineageTag: 21ff5787-9645-4fe7-b939-1d1140ded4f9
+		summarizeBy: none
+		sourceColumn: merchant_mcc
+
+		annotation SummarizationSetBy = Automatic
+
+	column merchant_country
+		dataType: string
+		lineageTag: d06b8d22-b8d7-436e-9ad5-b472aa38e857
+		summarizeBy: none
+		sourceColumn: merchant_country
+
+		annotation SummarizationSetBy = Automatic
+
+	column txn_count
+		dataType: int64
+		formatString: #,0
+		lineageTag: d4b60515-eac0-4c9a-968c-f4ef4279b676
+		summarizeBy: sum
+		sourceColumn: txn_count
+
+		annotation SummarizationSetBy = Automatic
+
+	column is_high_risk_mcc
+		dataType: boolean
+		lineageTag: 9443dd90-2e8b-413f-bf30-9463776383f6
+		summarizeBy: none
+		sourceColumn: is_high_risk_mcc
+
+		annotation SummarizationSetBy = Automatic
+
+	partition dim_merchant = entity
+		mode: directLake
+		source
+			entityName: gold_dim_merchant
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

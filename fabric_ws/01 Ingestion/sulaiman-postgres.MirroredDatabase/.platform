@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "MirroredDatabase",
+    "displayName": "sulaiman-postgres"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "7b9b97d4-986f-96c5-417e-311c5069602e"
+  }
+}

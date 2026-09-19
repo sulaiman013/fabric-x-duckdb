@@ -1,0 +1,52 @@
+table dim_time
+	lineageTag: 6526aa20-a507-4370-8589-acdb4e2c795c
+
+	column time_key
+		dataType: int64
+		isHidden
+		lineageTag: ab64993c-b809-466d-adbf-37081a7168f5
+		summarizeBy: none
+		sourceColumn: time_key
+
+		annotation SummarizationSetBy = Automatic
+
+	column hour_of_day
+		dataType: int64
+		lineageTag: 800919ff-c043-4f73-b013-5c54d0fa73e1
+		summarizeBy: sum
+		sourceColumn: hour_of_day
+
+		annotation SummarizationSetBy = Automatic
+
+	column hour_label
+		dataType: string
+		lineageTag: 14a78398-98d3-46f6-b2a4-5d5478900495
+		summarizeBy: none
+		sourceColumn: hour_label
+
+		annotation SummarizationSetBy = Automatic
+
+	column day_part
+		dataType: string
+		lineageTag: 71684c33-43ba-4aec-ae40-9c45889a0011
+		summarizeBy: none
+		sourceColumn: day_part
+
+		annotation SummarizationSetBy = Automatic
+
+	column is_odd_hour
+		dataType: boolean
+		lineageTag: e69e6b4b-2505-4b1f-a550-c6af882af3e3
+		summarizeBy: none
+		sourceColumn: is_odd_hour
+
+		annotation SummarizationSetBy = Automatic
+
+	partition dim_time = entity
+		mode: directLake
+		source
+			entityName: gold_dim_time
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

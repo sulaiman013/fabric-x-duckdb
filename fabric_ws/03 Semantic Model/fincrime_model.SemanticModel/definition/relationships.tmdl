@@ -1,0 +1,32 @@
+relationship 249d3c49-89c8-4765-94d2-2f031b4eb526
+	fromColumn: fact_transaction.date_key
+	toColumn: dim_date.date_key
+
+relationship e2ceb58d-41fb-4a05-8e50-5f8b599fdb7d
+	fromColumn: fact_transaction.time_key
+	toColumn: dim_time.time_key
+
+relationship ce912936-e972-4cb3-bbfe-10273d79c721
+	fromColumn: fact_transaction.customer_key
+	toColumn: dim_customer.customer_key
+
+relationship 00511726-548e-4afb-bd45-ac3e09b1cca2
+	fromColumn: fact_transaction.merchant_key
+	toColumn: dim_merchant.merchant_key
+
+relationship d12c884c-2227-4ab2-928e-570bc331d414
+	fromColumn: fact_transaction.channel_key
+	toColumn: dim_channel.channel_key
+
+relationship 16287404-8fd3-4999-aaae-0f3fda7f1aee
+	fromColumn: fact_transaction.card_key
+	toColumn: dim_card.card_key
+
+relationship 5e32641c-ac6f-4f13-924b-5216063e9fb4
+	fromColumn: fact_alert._mirror_row_id
+	toColumn: fact_transaction._mirror_row_id
+
+relationship 82a6e2f3-43cb-432f-8621-bbcfab5aee6e
+	fromColumn: fact_alert.rule_id
+	toColumn: dim_risk_rule.rule_id
+

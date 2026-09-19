@@ -1,0 +1,36 @@
+table dim_risk_rule
+	lineageTag: a1117122-70bc-47f4-9e9e-7cc241b9759d
+
+	column rule_id
+		dataType: string
+		lineageTag: baa0ba27-bbc0-4363-84b3-85bee1fecf3b
+		summarizeBy: none
+		sourceColumn: rule_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column rule_name
+		dataType: string
+		lineageTag: c3520d70-dfc0-4358-8141-ea90e797173e
+		summarizeBy: none
+		sourceColumn: rule_name
+
+		annotation SummarizationSetBy = Automatic
+
+	column weight
+		dataType: int64
+		formatString: #,0
+		lineageTag: c88e83df-c51d-4ef8-a5a9-94376c8c855d
+		summarizeBy: sum
+		sourceColumn: weight
+
+		annotation SummarizationSetBy = Automatic
+
+	partition dim_risk_rule = entity
+		mode: directLake
+		source
+			entityName: gold_dim_risk_rule
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

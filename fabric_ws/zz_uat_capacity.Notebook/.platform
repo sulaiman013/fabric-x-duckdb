@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Notebook",
+    "displayName": "zz_uat_capacity"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "814bca40-8f66-99ed-4530-dbae54236086"
+  }
+}

@@ -1,0 +1,15 @@
+[
+  {
+    "name": "raw_txn",
+    "path": "/Tables",
+    "target": {
+      "type": "OneLake",
+      "oneLake": {
+        "path": "Tables/dbo/raw_txn",
+        "itemId": "7b9b97d4-986f-96c5-417e-311c5069602e",
+        "workspaceId": "00000000-0000-0000-0000-000000000000",
+        "artifactType": "MountedRelationalDatabase"
+      }
+    }
+  }
+]

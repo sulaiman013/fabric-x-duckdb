@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "SemanticModel",
+    "displayName": "fincrime_model"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "46809aaa-1e86-9a25-4698-76aacb8a25d5"
+  }
+}

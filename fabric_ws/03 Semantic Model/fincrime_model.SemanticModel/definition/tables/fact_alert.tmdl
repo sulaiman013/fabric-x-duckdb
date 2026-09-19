@@ -1,0 +1,57 @@
+table fact_alert
+	lineageTag: fc918726-e531-448b-8660-4dfae9b0cf38
+
+	measure 'Rule Firings' = COUNTROWS ( fact_alert )
+		formatString: #,0
+		lineageTag: 4841af35-8f0d-4c06-b919-c67ea3c38374
+
+	measure 'Rule Firings per Transaction' = DIVIDE ( [Rule Firings], [Transactions] )
+		formatString: #,0.00
+		lineageTag: f39944ba-8c38-4a7f-8bc3-1ba71155ab30
+
+	measure 'Transactions With Any Rule' = DISTINCTCOUNT ( fact_alert[_mirror_row_id] )
+		formatString: #,0
+		lineageTag: f3770cfd-5d11-408e-9246-003de6cf2800
+
+	measure 'Any Rule Rate' = DIVIDE ( [Transactions With Any Rule], [Transactions] )
+		formatString: 0.0%
+		lineageTag: ba121a26-e7d1-4c02-95d8-0e05421c1de8
+
+	measure 'Rule Firings per Alert' = DIVIDE ( [Rule Firings], [Alerts Raised] )
+		formatString: #,0.0
+		lineageTag: 817cb655-949c-454b-816b-c22fb17c5b43
+
+	column _mirror_row_id
+		dataType: int64
+		isHidden
+		lineageTag: 0d4ab768-b956-4392-a26c-2770a74cd5db
+		summarizeBy: none
+		sourceColumn: _mirror_row_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column rule_id
+		dataType: string
+		lineageTag: 06f2cca2-2dfe-48e4-9e83-456760ed5385
+		summarizeBy: none
+		sourceColumn: rule_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column weight
+		dataType: int64
+		formatString: #,0
+		lineageTag: aa0a7a03-c793-4146-b102-a11a3189b05d
+		summarizeBy: sum
+		sourceColumn: weight
+
+		annotation SummarizationSetBy = Automatic
+
+	partition fact_alert = entity
+		mode: directLake
+		source
+			entityName: gold_fact_alert
+			expressionSource: DatabaseQuery
+
+	annotation PBI_ResultType = Table
+

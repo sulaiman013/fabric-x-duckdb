@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Lakehouse",
+    "displayName": "fincrime"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "65d752ff-52cb-b7c9-46fc-a2e474f54fe9"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Notebook",
+    "displayName": "02_vorder_write"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "6d6eb216-1935-971a-4d36-c2b72ada3a41"
+  }
+}
