@@ -1924,3 +1924,136 @@ make it so.
 - Section 36's "Live change propagates: PASS" was true and incomplete. Changes
   made after the slot propagate; the two made between the snapshot and the slot
   did not, and no check in that section could have seen it.
+---
+
+## 41. The acceptance pass became a program, and it found three things
+
+Section 36 was a UAT in the sense that a careful person sat down and checked
+everything once. That is worth doing, and it is not repeatable. By the time
+section 40 had changed the transformation, the parquet, the mirror and four
+documents, nothing section 36 established could be relied on any more.
+
+So the pass is now a program: `scripts/uat.py`, **39 checks** over the whole
+pipeline, which writes `UAT.md` and exits non-zero if anything failed.
+
+### How it is split, and why
+
+Some checks have no local equivalent. The mirror's *content* as opposed to its
+status counter, the gold parquet's physical types, the Delta tables' V-Order
+properties, and anything touching the ops database all have to run inside the
+capacity. So the pass has two halves:
+
+* `scripts/uat.py` runs locally: the repository, PostgreSQL, the replicator,
+  the semantic model over DAX, the report's files, and the documentation;
+* `scripts/build_uat_notebook.py` generates `zz_uat_capacity`, which `uat.py`
+  imports, runs, and merges back through `Files/uat_capacity.json`.
+
+Same generator pattern as everything else here, for the same reason: the
+notebook is derived from a readable Python file rather than maintained as JSON.
+The generated notebook is gitignored, because every run bakes that run's probe
+token into it.
+
+Three rules the code enforces, each of which cost something to learn:
+
+| Rule | Why |
+| --- | --- |
+| A check that cannot run is FAIL or SKIP, never a silent pass | a green pass that quietly skipped half its checks is worse than a red one |
+| One failure never hides the next | every check is caught and recorded, so a single early break cannot mask the twelve after it |
+| Nothing is trusted from an earlier section, including this file's own constants | the source counts are re-measured by default, and `--skip-source-scan` is opt-in |
+
+### The live test
+
+The one that matters for a mirror, and the one that cannot be faked. The pass
+UPDATEs a designated probe row in PostgreSQL with a fresh timestamped token,
+polls `processedRows` until the replication engine has consumed it, and then
+the capacity half reads that row out of the Delta table and compares the
+value. Source to WAL to landing zone to Delta, checked **by value** rather than
+by counter, on every run. Measured this time: 151 seconds from `UPDATE` to
+`processedRows` advancing, and the token `UAT-20260919-091543` read back out of
+OneLake.
+
+It guards itself first. Check 1.7 confirms the probe row has no duplicate twin,
+because the dedup key includes `merchant_name`: changing one copy of a
+duplicated pair would split a dedup group and move the gold row count. A test
+that quietly corrupts the thing it is testing is worse than no test.
+
+### What it found
+
+**A README that told the reader to build a broken mirror.** The reproduction
+steps ran `snapshot_to_fabric.py` before `cdc_to_fabric.py --setup`, which is
+precisely the mistake section 40 spent a night diagnosing. The same document
+warned about it in bold two screens higher and then instructed the opposite.
+Corrected to slot first, then snapshot, with the reason inline.
+
+This is the second time a documentation defect has been the most dangerous
+finding of a pass. Section 36 found a README that said the table was loaded
+UNLOGGED, which would have silently broken CDC for anyone following it. Both
+are the same failure: the prose was updated when the lesson was learned, and
+the commands underneath it were not.
+
+**A pipeline that could not be run from a clone.** `03_verify` existed only in
+the workspace. It had been created there and never exported, so the repository
+described a three-notebook Phase 2 and shipped two. Exported and committed.
+
+**The ops mirror is asynchronous, and now that is a measured number.** The
+write-back check wrote a decision through the user data function, confirmed the
+row count moved, and then failed, because it read OneLake the instant the
+function returned and the row was not there yet. That is not a defect; a Fabric
+SQL database mirroring itself to OneLake is eventually consistent, and nothing
+had ever said how eventual. The check now polls and reports the lag. Measured:
+**25.7 seconds** from the analyst's decision to DuckDB reading it back out of
+Delta.
+
+### Two engine facts worth keeping
+
+**delta-rs cannot read the ops tables; DuckDB can.** The first attempt at the
+loop check used `deltalake` and failed with
+`DeltaProtocolError: The table has set these reader features: {'deletionVectors'}`.
+Fabric's self-mirrored SQL tables enable deletion vectors, which DuckDB reads
+and delta-rs does not (Microsoft Learn, *Choosing a notebook kernel*, which
+tabulates exactly this). Using DuckDB is the better choice regardless, because
+it is the engine that builds the gold layer, so the check proves the decision
+is joinable on the next rebuild rather than merely present.
+
+**`notebookutils.fs.cp` nests the source inside the destination.** Copying a
+Delta directory and then scanning the destination gives
+`No files in log segment`, because the table landed one level deeper. The check
+now walks for the directory that actually contains `_delta_log`.
+
+### Five bugs in the harness itself
+
+Worth recording, because a test that cries wolf gets switched off by its owner
+within a week.
+
+| Symptom | Cause |
+| --- | --- |
+| "a full account UPN in BUILD_LOG.md" | the secret scanner's pattern `sulaiman@[a-z0-9.]*onmicrosoft\.com` matched the *redaction* `sulaiman@...onmicrosoft.com`, because `.` is in the character class it was scanning with |
+| "every script fails to compile" | `py_compile(cfile=os.devnull)` refuses to write to `NUL` on Windows; compiling the source text directly is simpler and faster |
+| "00_README has no configure magic" | not every Python notebook needs to request vCores. The real invariant is that a `%%configure` must be **cell 0**, because Fabric ignores it anywhere else, and that is what is checked now |
+| "the capacity notebook did not start" | `fab job start` prints the job id two ways and splits them across stdout and stderr, so matching one phrasing lost the id of a job that had genuinely started |
+| "ops_health returned no JSON" | it returns `alert_disposition=0, case=0, ...`, which is a perfectly good return value and simply not the one the check assumed |
+
+The first three are the interesting class: every one of them reported a defect
+in code that was correct. A false failure costs the same investigation as a
+real one and buys nothing.
+
+### The result
+
+**39 passed, 0 failed, 1 skipped**, in 8.5 minutes. The skip is the four-minute
+full scan of PostgreSQL's 50M rows, opted out of with `--skip-source-scan` and
+run in full earlier in the same pass.
+
+| Phase | Evidence from the run |
+| --- | --- |
+| Repository | no secrets, ignore rules hold, 23 scripts and 7 notebooks parse, CDC parser tests pass |
+| Ingestion | `wal_level=logical`, table LOGGED, one replicator, mirror Replicating, a live change verified by value in OneLake |
+| Mirror fidelity | 50,000,002 rows / 49,406,792 distinct against a source of 50,000,001 / 49,406,791: the one known pre-slot row, and nothing else |
+| Transformation | Python kernel, 8 vCores, 67.4 GB; identical to the baseline rule by rule; 50,000,001 scored to 49,406,792 kept with 0 ids surviving twice; every timestamp an instant; V-Order on all nine; 0 orphan keys |
+| Semantic model | Direct Lake; all 17 measures resolve; Transactions 49,406,792 and Rule Firings 65,175,479 both equal to the verified gold layer; Total Amount 17,808,657,535.30 |
+| Application | 4 pages with no orphan visuals, bound by connection, published; a decision written through a function, an invalid verdict rejected as a handled error, and the decision read back out of OneLake by DuckDB in 25.7s |
+| Documentation | no em or en dashes, the UNLOGGED warning intact, the README quoting this run's measured numbers, and its layout matching the repository file for file |
+
+The last row is the one that keeps the rest honest. The README is now checked
+against the repository on every run: a script added without a line in the
+layout fails the pass, and so does a row count quoted in prose that the
+pipeline no longer produces.

@@ -40,3 +40,11 @@ venv/
 .idea/
 Thumbs.db
 desktop.ini
+
+# ---------------------------------------------------------------------------
+# Generated per run. scripts/build_uat_notebook.py rebuilds this notebook on
+# every UAT pass with that run's probe token baked in, so committing it would
+# be churn. The generator is the source of truth and is tracked.
+# ---------------------------------------------------------------------------
+notebooks/zz_uat_capacity.Notebook/
+uat_capacity.json

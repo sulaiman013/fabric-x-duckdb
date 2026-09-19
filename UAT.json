@@ -1,0 +1,517 @@
+{
+ "ran_at_utc": "2026-09-19 09:24:07Z",
+ "passed": 39,
+ "failed": 0,
+ "skipped": 1,
+ "checks": [
+  {
+   "id": "0.1",
+   "name": "no credentials in tracked files",
+   "state": "PASS",
+   "detail": "no secrets in tracked files"
+  },
+  {
+   "id": "0.2",
+   "name": "sensitive paths are covered by .gitignore",
+   "state": "PASS",
+   "detail": "all 4 sensitive paths are ignored"
+  },
+  {
+   "id": "0.3",
+   "name": "every script compiles",
+   "state": "PASS",
+   "detail": "all 24 scripts parse"
+  },
+  {
+   "id": "0.4",
+   "name": "the CDC parser unit tests pass",
+   "state": "PASS",
+   "detail": "8/8 passed"
+  },
+  {
+   "id": "0.5",
+   "name": "every notebook parses and declares its kernel",
+   "state": "PASS",
+   "detail": "all 7 notebooks parse and declare their kernel"
+  },
+  {
+   "id": "1.1",
+   "name": "PostgreSQL is configured for logical replication",
+   "state": "PASS",
+   "detail": "wal_level=logical, synchronous_commit=on"
+  },
+  {
+   "id": "1.2",
+   "name": "the landing table is LOGGED, so CDC can see it",
+   "state": "PASS",
+   "detail": "relpersistence='p' (p = LOGGED)"
+  },
+  {
+   "id": "1.3",
+   "name": "the replication slot exists",
+   "state": "PASS",
+   "detail": "slot ('fabric_cdc', 'test_decoding', 'logical', False, '56 bytes')"
+  },
+  {
+   "id": "1.4",
+   "name": "exactly one replicator process is running",
+   "state": "PASS",
+   "detail": "1 genuine python.exe running cdc_to_fabric.py"
+  },
+  {
+   "id": "1.5",
+   "name": "the mirror reports Replicating",
+   "state": "PASS",
+   "detail": "raw_txn status=Replicating processedRows=50000021"
+  },
+  {
+   "id": "1.6",
+   "name": "the source row and key counts, measured now",
+   "state": "SKIP",
+   "detail": "reusing the recorded figures 50000001 / 49406791 (--skip-source-scan)"
+  },
+  {
+   "id": "1.7",
+   "name": "the probe row is safe to modify",
+   "state": "PASS",
+   "detail": "probe row 12345678 has txn_id TXN00000015096963, appearing 1 time(s)"
+  },
+  {
+   "id": "1.8",
+   "name": "a live source change reaches the replication engine",
+   "state": "PASS",
+   "detail": "set merchant_name=UAT-20260919-092459; processedRows 50,000,021 to 50,000,022 in 73s"
+  },
+  {
+   "id": "P1.1",
+   "name": "mirror row and key counts match the source",
+   "state": "PASS",
+   "detail": "mirror 50,000,002 rows / 49,406,792 distinct vs source 50,000,001 / 49,406,791 (+1, +1); known pre-slot row 3870725"
+  },
+  {
+   "id": "P1.2",
+   "name": "the live PostgreSQL change is visible in OneLake",
+   "state": "PASS",
+   "detail": "row 12345678 merchant_name = 'UAT-20260919-092459', expected 'UAT-20260919-092459'"
+  },
+  {
+   "id": "P2.1",
+   "name": "the build and verify evidence files exist",
+   "state": "PASS",
+   "detail": "build ran 2026-09-18T21:10:46Z on the python kernel, 8 vCores, duckdb 1.2.2"
+  },
+  {
+   "id": "P2.2",
+   "name": "the transformation ran on the Python kernel at 8 vCores",
+   "state": "PASS",
+   "detail": "spark_in_globals=False, cpu_count=8, ram_gb=67.4"
+  },
+  {
+   "id": "P2.3",
+   "name": "notebook counts equal the verified Delta layer",
+   "state": "PASS",
+   "detail": "all 9 tables match the verified Delta layer"
+  },
+  {
+   "id": "P2.4",
+   "name": "the build is deterministic, rule by rule",
+   "state": "PASS",
+   "detail": "identical to the baseline rule by rule: {\"R02\": 10118821, \"R03\": 3624172, \"R04\": 10164144, \"R05\": 864962, \"R06\": 13697031, \"R07\": 2126003, \"R09\": 24580346}"
+  },
+  {
+   "id": "P2.5",
+   "name": "dedup reconciles and no id survives twice",
+   "state": "PASS",
+   "detail": "50,000,001 scored to 49,406,792 kept (593,209 removed), 49,406,792 distinct ids, 0 surviving twice"
+  },
+  {
+   "id": "P2.6",
+   "name": "gold timestamps are instants, not naive",
+   "state": "PASS",
+   "detail": "every timestamp column is an instant"
+  },
+  {
+   "id": "P2.7",
+   "name": "V-Order is enabled on every gold table",
+   "state": "PASS",
+   "detail": "V-Order enabled on all 9 tables"
+  },
+  {
+   "id": "P2.8",
+   "name": "referential integrity: no orphan dimension keys",
+   "state": "PASS",
+   "detail": "0 orphan keys across 49,406,792 fact rows"
+  },
+  {
+   "id": "P2.9",
+   "name": "all nine gold Delta tables read back",
+   "state": "PASS",
+   "detail": "9 gold Delta tables, versions [1]"
+  },
+  {
+   "id": "P4.1",
+   "name": "write-back through a user data function",
+   "state": "PASS",
+   "detail": "alert_disposition 5 to 6 (+1); returned 'Alert UAT-20260919-092854 recorded as FALSE_POSITIVE.'"
+  },
+  {
+   "id": "P4.2",
+   "name": "invalid input is rejected as a handled error",
+   "state": "PASS",
+   "detail": "rejected: Request to webapi/capacities/98FE2433-911E-45EE-8C65-775DB11700E4/workloads/FuncSet/FuncSetService/automatic/functionsets/9dc3c86a-730b-40ef-86d2-8efc8b447960/functions/disposition_alert/invoke?worksp"
+  },
+  {
+   "id": "P4.3",
+   "name": "the written decision reaches OneLake as Delta",
+   "state": "PASS",
+   "detail": "5 ops tables mirror themselves to OneLake with no configuration; this run's decision arrived in 25.8s and DuckDB read it back from 6 row(s): [['UAT-20260919-092854', '12345678', 'FALSE_POSITIVE', 'uat']]"
+  },
+  {
+   "id": "3.1",
+   "name": "the model is authored as Direct Lake",
+   "state": "PASS",
+   "detail": "partition modes authored: ['directLake']"
+  },
+  {
+   "id": "3.2",
+   "name": "every measure resolves",
+   "state": "PASS",
+   "detail": "all 17 measures resolve against Direct Lake"
+  },
+  {
+   "id": "3.3",
+   "name": "the model reconciles to the verified gold layer",
+   "state": "PASS",
+   "detail": "Transactions 49,406,792 vs gold 49,406,792; Rule Firings 65,175,479 vs gold 65,175,479; Total Amount 17808657535.3; Alerts 1,423,088"
+  },
+  {
+   "id": "3.4",
+   "name": "report queries answer in seconds, not minutes",
+   "state": "PASS",
+   "detail": "headline KPIs 1 rows [2.59, 2.83, 2.96]; overview cube 2508 rows [3.11, 3.29, 3.19]; rules by band 12 rows [2.94, 3.11, 2.84] (each includes ~2s of CLI startup)"
+  },
+  {
+   "id": "4.1",
+   "name": "the report has four pages, the guide last",
+   "state": "PASS",
+   "detail": "pageOrder ['Overview', 'Rules', 'Risk', 'Guide'], folders ['Guide', 'Overview', 'Risk', 'Rules']"
+  },
+  {
+   "id": "4.2",
+   "name": "no orphaned visuals on any page",
+   "state": "PASS",
+   "detail": "4 pages, each with a content visual and a navigator"
+  },
+  {
+   "id": "4.3",
+   "name": "the report measures bind to a real entity",
+   "state": "PASS",
+   "detail": "4 report measures on ['fact_transaction']"
+  },
+  {
+   "id": "4.4",
+   "name": "the report binds to the semantic model by connection",
+   "state": "PASS",
+   "detail": "byConnection carries a semanticModelId"
+  },
+  {
+   "id": "4.5",
+   "name": "the report is published",
+   "state": "PASS",
+   "detail": "FinCrime is published in the workspace"
+  },
+  {
+   "id": "5.1",
+   "name": "no em or en dashes in the documentation",
+   "state": "PASS",
+   "detail": "no em or en dashes in the docs"
+  },
+  {
+   "id": "5.2",
+   "name": "the README still warns about UNLOGGED",
+   "state": "PASS",
+   "detail": "the README still tells the reader to pass --logged"
+  },
+  {
+   "id": "5.3",
+   "name": "the README quotes the numbers this run measured",
+   "state": "PASS",
+   "detail": "the README quotes the measured ['gold rows', 'source rows']"
+  },
+  {
+   "id": "5.4",
+   "name": "the README layout matches what is in the repository",
+   "state": "PASS",
+   "detail": "the layout matches the repository (31 items)"
+  }
+ ],
+ "capacity": {
+  "mirror_rows": 50000002,
+  "mirror_distinct": 49406792,
+  "build": {
+   "ran_at_utc": "2026-09-18T21:10:46Z",
+   "kernel": "python",
+   "vcores_requested": 8,
+   "env": {
+    "cpu_count": 8,
+    "ram_gb": 67.4,
+    "tmp_free_gb": 20.8,
+    "python": "3.11.15",
+    "spark_in_globals": false
+   },
+   "duckdb_version": "1.2.2",
+   "memory_limit_gb": 47,
+   "source_rows": 50000001,
+   "timing_s": {
+    "count_source_s": 12.8,
+    "build_s": 729.4,
+    "write_s": 28.4,
+    "total_s": 770.6
+   },
+   "counts": {
+    "fact_transaction": 49406792,
+    "fact_alert": 65175479,
+    "dim_customer": 5112692,
+    "dim_merchant": 250003,
+    "dim_channel": 120,
+    "dim_card": 588132,
+    "dim_date": 904,
+    "dim_time": 25,
+    "dim_risk_rule": 7
+   },
+   "rule_firings": {
+    "R02": 10118821,
+    "R03": 3624172,
+    "R04": 10164144,
+    "R05": 864962,
+    "R06": 13697031,
+    "R07": 2126003,
+    "R09": 24580346
+   },
+   "recon": {
+    "scored_rows": 50000001,
+    "deduped_rows": 49406792,
+    "distinct_txn_id_scored": 49406792,
+    "null_txn_id_deduped": 0,
+    "removed": 593209,
+    "multi_survivor_txn_ids": 0,
+    "multi_survivor_samples": []
+   },
+   "gold_parquet_mb": {
+    "fact_transaction": 1802.4,
+    "fact_alert": 207.7,
+    "dim_customer": 50.6,
+    "dim_merchant": 1.0,
+    "dim_channel": 0.0,
+    "dim_card": 0.8,
+    "dim_date": 0.0,
+    "dim_time": 0.0,
+    "dim_risk_rule": 0.0
+   },
+   "cu": 4.0,
+   "cu_seconds": 3082.4
+  },
+  "verify": {
+   "tables": {
+    "fact_transaction": {
+     "rows": 49406792,
+     "numFiles": 14,
+     "sizeMB": 2130.2
+    },
+    "fact_alert": {
+     "rows": 65175479,
+     "numFiles": 8,
+     "sizeMB": 317.9
+    },
+    "dim_customer": {
+     "rows": 5112692,
+     "numFiles": 8,
+     "sizeMB": 80.9
+    },
+    "dim_merchant": {
+     "rows": 250003,
+     "numFiles": 1,
+     "sizeMB": 2.9
+    },
+    "dim_channel": {
+     "rows": 120,
+     "numFiles": 1,
+     "sizeMB": 0.0
+    },
+    "dim_card": {
+     "rows": 588132,
+     "numFiles": 1,
+     "sizeMB": 3.9
+    },
+    "dim_date": {
+     "rows": 904,
+     "numFiles": 1,
+     "sizeMB": 0.0
+    },
+    "dim_time": {
+     "rows": 25,
+     "numFiles": 1,
+     "sizeMB": 0.0
+    },
+    "dim_risk_rule": {
+     "rows": 7,
+     "numFiles": 1,
+     "sizeMB": 0.0
+    }
+   },
+   "checks": {
+    "vorder_tblproperties": {
+     "fact_transaction": {
+      "delta.parquet.vorder.enabled": "true"
+     },
+     "fact_alert": {
+      "delta.parquet.vorder.enabled": "true"
+     },
+     "dim_customer": {
+      "delta.parquet.vorder.enabled": "true"
+     },
+     "dim_merchant": {
+      "delta.parquet.vorder.enabled": "true"
+     },
+     "dim_channel": {
+      "delta.parquet.vorder.enabled": "true"
+     },
+     "dim_card": {
+      "delta.parquet.vorder.enabled": "true"
+     },
+     "dim_date": {
+      "delta.parquet.vorder.enabled": "true"
+     },
+     "dim_time": {
+      "delta.parquet.vorder.enabled": "true"
+     },
+     "dim_risk_rule": {
+      "delta.parquet.vorder.enabled": "true"
+     }
+    },
+    "vorder_session_conf": null,
+    "orphan_keys": {
+     "bad_customer": 0,
+     "bad_merchant": 0,
+     "bad_date": 0,
+     "total": 49406792
+    },
+    "risk_bands": [
+     {
+      "risk_band": "LOW",
+      "n": 36164929
+     },
+     {
+      "risk_band": "MEDIUM",
+      "n": 11818775
+     },
+     {
+      "risk_band": "HIGH",
+      "n": 1423088
+     }
+    ],
+    "fact_columns": [
+     "_mirror_row_id",
+     "txn_id",
+     "date_key",
+     "time_key",
+     "customer_key",
+     "merchant_key",
+     "channel_key",
+     "card_key",
+     "txn_ts",
+     "txn_type",
+     "txn_status",
+     "txn_amount",
+     "txn_currency",
+     "amount_local",
+     "fee_amount",
+     "auth_approved",
+     "risk_score",
+     "rules_fired",
+     "risk_band"
+    ]
+   },
+   "errors": {}
+  },
+  "delta": [
+   [
+    "gold_dim_card",
+    1,
+    1
+   ],
+   [
+    "gold_dim_channel",
+    1,
+    1
+   ],
+   [
+    "gold_dim_customer",
+    1,
+    8
+   ],
+   [
+    "gold_dim_date",
+    1,
+    1
+   ],
+   [
+    "gold_dim_merchant",
+    1,
+    1
+   ],
+   [
+    "gold_dim_risk_rule",
+    1,
+    1
+   ],
+   [
+    "gold_dim_time",
+    1,
+    1
+   ],
+   [
+    "gold_fact_alert",
+    1,
+    8
+   ],
+   [
+    "gold_fact_transaction",
+    1,
+    14
+   ]
+  ],
+  "udf_functions": [
+   "advance_case",
+   "assign_item",
+   "disposition_alert",
+   "ops_health",
+   "record_kyc_action"
+  ],
+  "ops_before": {
+   "alert_disposition": 5,
+   "case": 0,
+   "case_event": 0,
+   "kyc_action": 0,
+   "assignment": 0
+  },
+  "ops_after": {
+   "alert_disposition": 6,
+   "case": 0,
+   "case_event": 0,
+   "kyc_action": 0,
+   "assignment": 0
+  },
+  "udf_message": "Alert UAT-20260919-092854 recorded as FALSE_POSITIVE.",
+  "ops_delta_rows": 6,
+  "ops_mirror_lag_s": 25.8,
+  "ops_delta_row_for_this_run": [
+   [
+    "UAT-20260919-092854",
+    "12345678",
+    "FALSE_POSITIVE",
+    "uat"
+   ]
+  ]
+ }
+}
