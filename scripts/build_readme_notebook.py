@@ -580,18 +580,24 @@ print(f"Each of these aggregates the full {B['counts']['fact_transaction']:,}-ro
 
 ## 5. The report (`FinCrime`): four pages, one visual each
 
-### The technique
+Every screenshot below is the report running in Power BI Desktop, live on the
+Direct Lake model, captured through the Desktop Bridge at 2x and cropped to the
+canvas. Nothing is mocked and no number is typed in: what you see is what the
+pipeline produced.
+
+### The technique, in one paragraph
 
 Each page is a **single HTML Content visual** driven by **one DAX measure**.
-The measure aggregates in the model and ships a compact cube as JavaScript;
-the browser does layout, ranking and filtering. Clicking a chip or a bar
-re-aggregates the cube **in the browser** and never queries the model again.
+The measure aggregates in the model and ships a compact cube plus its own
+renderer as JavaScript; the browser does layout, ranking and filtering.
+Clicking a chip or a bar re-aggregates the cube **in the browser** and never
+queries the model again.
 
 Why not twenty visuals per page? A custom visual cannot cross-filter its
-neighbours unless its own compiled code implements selection, which this one
-does not. Rather than fight that, the page *is* the visual, so there is nothing
-to cross-filter to. Report-level filters still apply, because the measure is
-evaluated in filter context.
+neighbours unless its own compiled code builds selection identities, which this
+one does not. Rather than fight that, the page *is* the visual, so there is
+nothing to cross-filter to. Report-level filters still apply, because the
+measure is evaluated in filter context.
 
 ### Why the measure ships a cube and not rows
 
@@ -602,21 +608,138 @@ cells, about **%(cube_pct)s** of the ceiling, from a 49.4M-row table. Money
 crosses as integer sen so no locale can corrupt the payload. The renderer is
 inlined into the measure, so the visual fetches nothing from the internet.
 
-### The pages
+---
 
-| Page | Answers | Ships |
-| --- | --- | --- |
-| Overview | Alert volume and value over time, by channel, band and type | month x channel x band x type |
-| Rule effectiveness | What fires, how rules overlap, what a threshold costs in analysts | rules, rules-fired x band, score histogram |
-| Risk and exposure | Merchant category, currency, card brand, entry mode, by band | four dimension x band grids |
-| Guide | How to read all of the above, with a live threshold demonstrator | the score histogram |
+### Page 1 of 4, Overview: is the monitoring working, and where is the volume?
+
+![The Overview page: KPI strip, transactions by month, channel, composition and rule firings](https://raw.githubusercontent.com/sulaiman013/fabric-x-duckdb/master/report/screenshots/report-overview.png)
+
+Read it top to bottom:
+
+1. **The scope line, top right.** `49,406,792 of 49,406,792 transactions in
+   scope (100.0%%)`. It always states the denominator, so a filtered page can
+   never be mistaken for the whole population.
+2. **The chip row.** RISK, CHANNEL and TYPE. These are **not** Power BI
+   slicers. They are HTML inside the visual, and clicking one re-aggregates the
+   cube in the browser in under a millisecond without touching the model.
+3. **The KPI strip.** Six measures, with the one the page is about highlighted:
+   an alert rate of **2.88%%**. Beside it sit the numbers that make it
+   meaningful: 1,423,088 alerts, RM 1.5b of value behind them, and **28.5
+   analyst-years** at 50,000 alerts cleared per analyst per year.
+4. **Transactions by month.** 31 months, each bar stacked low / medium / high.
+   The stub bar on the left labelled `Unknown` is the rows whose date never
+   parsed: they are shown, not silently dropped, because that is what the data
+   actually contains.
+5. **Channel, stacked by risk band.** Mobile and Internet carry 11m each
+   against 5.5m for the branch channels, and their high-risk slivers are
+   visibly fatter.
+6. **Composition.** The band mix (73.2%% low, 23.9%% medium, 2.9%% high) and the
+   type mix, both recomputed under whatever chips are active.
+7. **Rule firings, with the caveat printed underneath.** A firing is not an
+   alert: a firing contributes to a score, and an alert is the score crossing
+   the band. The note says so on the page, because the two numbers differ by a
+   factor of 45 and the distinction is the whole design.
+
+---
+
+### Page 2 of 4, Rule effectiveness: which rules earn their keep?
+
+![The Rule effectiveness page: rules by firing volume, rules firing together, the score histogram and the threshold cost table](https://raw.githubusercontent.com/sulaiman013/fabric-x-duckdb/master/report/screenshots/report-rules.png)
+
+This is the page that turns monitoring into a decision.
+
+1. **The header.** 65,175,479 firings across 39,613,511 transactions. Those two
+   numbers are the reason the page exists.
+2. **The KPI strip.** 80.2%% of all transactions are touched by at least one
+   rule, and only 1,423,088 become alerts. **45.8 firings are absorbed per work
+   item**, which is the noise the scoring model removes before anyone is asked
+   to look at anything.
+3. **Rules by firing volume.** Seven rules with their weight and their real
+   fire count, sorted. `declined` fires 25m times at weight 10; `velocity` fires
+   865k times at weight 30. High volume and high weight are different things,
+   and the table shows both so a rule cannot hide behind either.
+4. **Rules firing together.** How many rules a transaction trips, stacked by the
+   band it ends up in. 9.8m transactions trip nothing, 20m trip exactly one, and
+   the stack only turns red from three rules up. That is the scoring model
+   working: one rule is rarely enough.
+5. **Risk score distribution**, bucketed by 5, with the alert threshold drawn as
+   a red line at 60.
+6. **What a threshold costs.** The cut-off table, and the point of the whole
+   pack: at 40 you raise 7.1m alerts and need 57 analysts; at 60 you raise 1.4m
+   and need 11; at 80 you raise 184k and need 1. Moving the line is a staffing
+   decision, and the page prices it rather than leaving it as a preference.
+
+---
+
+### Page 3 of 4, Risk and exposure: where does the risk concentrate?
+
+![The Risk and exposure page: merchant category, currency, card brand and entry mode, each stacked by risk band](https://raw.githubusercontent.com/sulaiman013/fabric-x-duckdb/master/report/screenshots/report-risk.png)
+
+1. **The header states what cannot be answered.** `exposure at risk RM 1.5b of
+   RM 18b` and then, deliberately, `RM 89m in unresolvable currencies`. The
+   page leads with the size of its own blind spot.
+2. **The KPI strip.** Card-not-present at 20.5%%, value settled in a foreign
+   currency at 71.3%%, odd hour at 20.6%%, declined at 60.6%% of the 40,546,379
+   that reached a decision, and a mean risk score of 19.8 out of a possible 145.
+3. **Four dimension grids**, each stacked by risk band: merchant category,
+   currency, card brand and entry mode. Every one is scrollable inside the
+   visual, in the browser, with no further queries.
+4. **The dirt is visible on purpose.** `(blank)` is the largest merchant
+   category. The currency list contains `458`, `NA` and `#N/A` beside USD and
+   MYR. The card brand list has `UNKNOWN` at 5.9m. This is a 100-column TEXT
+   extract with 31 spellings of one country, and a report that hid that would
+   be lying about its own inputs.
+
+---
+
+### Page 4 of 4, Guide: how to read all of the above
+
+![The Guide page: a seven-section rail, the framing, three explainer cards and the pipeline strip](https://raw.githubusercontent.com/sulaiman013/fabric-x-duckdb/master/report/screenshots/report-guide.png)
+
+The guide ships **inside** the report rather than in a separate document,
+because a document beside a report goes stale the first time the report
+changes.
+
+1. **The rail on the left** holds seven sections: start here, how the data gets
+   here, firing vs alert, the pages, reading the numbers, data quality, and what
+   this cannot do. Clicking one swaps the panel, in the browser.
+2. **The framing paragraph** states the operational question in one sentence:
+   which transactions should a human look at today, and can the team actually
+   work that many.
+3. **Six headline numbers**, then three cards: how the one-visual technique
+   works, what to read first, and the shape of the answer, which spells out the
+   gap between 39,613,511 transactions touched by a rule and 1,423,088 alerts.
+   A queue of 317 analyst-loads is ignored; a queue of 11 is worked.
+4. **The pipeline strip** along the bottom: PostgreSQL, open mirroring, DuckDB,
+   Direct Lake, this report.
+5. **Firing vs alert** carries an interactive threshold demonstrator: drag the
+   cut-off and watch the alert count and the analyst headcount move together.
+
+One honest note on this screenshot: the lower half of the panel is empty
+because `Start here` is the shortest of the seven sections. The other six fill
+the page; this is the one that does not, and the guide opens on it.
+
+### How these screenshots were produced
+
+Through the Power BI Desktop Bridge, not by hand, so they can be regenerated
+whenever the report changes:
+
+```
+powerbi-desktop status
+powerbi-desktop screenshot Overview --scale 2 --output report/screenshots/report-overview.png
+```
+
+The bridge reports the running Desktop instance, the PBIP it has open and the
+PBIR pages it can see, then renders a named page to PNG. The four images were
+cropped to the report canvas so Desktop's own collapsed Filters rail does not
+appear.
 
 ### What it costs to use
 
 The report issues **one** DAX query per page when it opens (the measure), and
-**zero** for every filter, chip and bar click after that. A conventional page
-of fifteen visuals issues fifteen queries on open and up to fifteen more on
-every interaction. The latency cell above is the whole per-page cost.
+**zero** for every filter, chip and bar click after that. A conventional page of
+fifteen visuals issues fifteen queries on open and up to fifteen more on every
+interaction. The latency measured above is therefore the whole per-page cost.
 """ % F))
 
     # =======================================================================
