@@ -29,6 +29,13 @@
 # MAGIC }
 
 
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "jupyter_python"
+# META }
+
 # CELL ********************
 
 PG_ROWS = 50000001
@@ -196,3 +203,10 @@ for c in CHECKS:
     if not c["ok"]:
         print("  FAILED {} {}: {}".format(c["id"], c["name"], c["detail"]))
 
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "jupyter_python"
+# META }

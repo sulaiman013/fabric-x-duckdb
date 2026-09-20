@@ -708,12 +708,19 @@ print(f"Each of these aggregates the full {B['counts']['fact_transaction']:,}-ro
 #   shuffling.
 # - It is charged at the **starter pool minimum of 8 CU**, twice the Python
 #   notebook's 4 CU. That is the documented floor, not a pessimistic guess.
-# - A Warehouse T-SQL path would also need the 49,406,792 rows **copied into
-#   warehouse storage first**, a second full copy of the data that Direct Lake
-#   over the lakehouse never makes. That copy is not priced here at all.
+# - Warehouse compute is **not user-sized**. Consumption is active vNodes times
+#   active time and it autoscales (Microsoft Learn, *Warehouse consumption and
+#   utilization*), so a Warehouse alternative cannot be pinned to a rate at all.
+#   The 8 CU above is the Spark floor, which is the closest documented rate that
+#   can actually be compared.
 # 
-# What is *not* claimed: that DuckDB beats Spark on every job. Above a single
-# node's memory, Spark wins. This job is 10.5 GB compressed and fits.
+# What is *not* claimed: that DuckDB beats Spark on every job. Microsoft's own
+# guidance puts the crossover at roughly **10 to 13 GB compressed**, where Fabric
+# Spark with the Native Execution Engine is competitive with or faster than most
+# single-machine engines, and where single-machine Python engines can hit
+# out-of-memory errors at lower vCore counts. This job is 10.5 GB
+# compressed. It is **on that line**, and it fits because the node carries 67.4 GB
+# of RAM and DuckDB was capped at 47 GB.
 
 # CELL ********************
 
@@ -787,26 +794,39 @@ print(f"transformation step: {(1 - step_a/step_b)*100:.0f}% less compute "
       f"({step_a:.3f} vs {step_b:.3f} CU-h); whole pipeline: {(1 - a_cuh/b_cuh)*100:.0f}% less "
       f"({b_cuh - a_cuh:.3f} CU-h, ${b_usd - a_usd:.3f} at ${PRICE_PER_CU_HOUR}/CU-h)")
 print()
-print("Not priced, in the alternative's favour: a Warehouse T-SQL path would first copy")
-print(f"{B['counts']['fact_transaction']:,} rows into warehouse storage. Direct Lake over the")
-print("lakehouse reads the Delta files the notebook wrote, so this pipeline holds ONE copy.")
+print("Not priced, either way: a gold layer is materialised in both routes, into the")
+print(f"lakehouse here or into warehouse storage there. Both persist {B['counts']['fact_transaction']:,} rows.")
+print("What Direct Lake removes is the IMPORT copy, which is a serving choice, not this one.")
 
 # MARKDOWN ********************
 
-# ### The bigger saving is structural, not per-run
+# ### The copy worth arguing about is the third one
 # 
-# Two copies of the data never get made:
+# A gold layer gets materialised either way. This route writes Delta into the
+# lakehouse; a T-SQL route writes it into warehouse storage. Both persist and both
+# cost storage, so this pipeline is **not** "one copy", and neither is that one.
 # 
-# 1. **No warehouse copy.** Direct Lake reads the gold Delta tables where Spark
-#    wrote them. A T-SQL transformation path lands its output in warehouse
-#    storage, and the semantic model reads that; the lakehouse copy and the
-#    warehouse copy both persist and both cost storage.
-# 2. **No import copy.** An Import-mode model would hold a third copy in memory
-#    and refresh it on a schedule, paying CU on every refresh whether or not
-#    anything changed. Direct Lake's framing reads the Delta log instead and
-#    costs seconds.
+# The copy that does not have to exist is the **Import** copy. An Import-mode
+# model holds a third copy of the data inside the model, rebuilds it on a
+# schedule, pays CU on every refresh whether or not anything changed, and is stale
+# in between. Direct Lake reads the files the notebook wrote, and a refresh copies
+# **only metadata** (Microsoft Learn, *Direct Lake overview*), which takes seconds.
 # 
-# And the report adds a third, at query time: after the one measure per page,
+# ### Where the Warehouse route wins
+# 
+# Worth writing down, because a comparison that only runs one way is an advert:
+# 
+# 1. **V-Order is on by default in every warehouse**, and off by default for Spark
+#    and lakehouses in new workspaces. This pipeline had to add `02_vorder_write`,
+#    233 s and about nine cents, to get what a warehouse gives free. Direct Lake
+#    cold-cache queries are 40 to 60% faster with it, so skipping it was never an
+#    option.
+# 2. **Warehouse compute autoscales**, so nobody has to size it. This route makes
+#    you pick 8 vCores and live with the choice.
+# 3. **T-SQL is familiar** to far more teams than DuckDB's dialect is, and that is
+#    a real operational cost this design is choosing to pay.
+# 
+# And the report adds a saving at query time: after the one measure per page,
 # every interaction is free. That is measurable on this workspace by watching the
 # Capacity Metrics app while clicking through the report, which is the test worth
 # running before believing any of this.
