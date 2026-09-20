@@ -60,3 +60,25 @@ fabric_ws/**/*.SQLDatabase/Security/
 # Build output of the architecture diagram. index.html is the deliverable and is
 # tracked; template.html is an intermediate and a second full copy of the page.
 architecture-diagram/template.html
+
+# ---------------------------------------------------------------------------
+# The film. The source is the work and is tracked. These are not:
+#   node_modules  ~300 MB of dependencies
+#   .capture      Playwright's raw webm, deleted by capture_arch.py anyway
+#   out/stills    frame-by-frame renders used to review layout before a render
+# out/           every render. the master is 62 MB and a git history is the
+#                wrong place for it. video/poster/ carries the poster frame,
+#                which is what the README needs.
+# public/arch.mp4 IS tracked: it is an input to the build, not an output.
+# ---------------------------------------------------------------------------
+video/node_modules/
+video/.capture/
+video/out/stills/
+video/out/*.txt
+
+# ---------------------------------------------------------------------------
+# NOT MINE. "ARCHITECTURE DIAGRAM ANON/" is client material that happens to sit
+# in this working tree as a reference. This repository is PUBLIC. It must never
+# be committed, so it is ignored by name rather than left to a careful `git add`.
+# ---------------------------------------------------------------------------
+ARCHITECTURE DIAGRAM ANON/

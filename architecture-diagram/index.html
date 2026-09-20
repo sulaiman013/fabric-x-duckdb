@@ -425,7 +425,7 @@ code{font-family:var(--mono);font-size:.92em;background:var(--plate);border:1px 
  <div class="bctl"><button class="btn" id="bBack">&larr; Back to diagram</button><button class="btn" id="bThemeB">Night mode</button></div>
  <div class="bwrap">
  <div class="eyebrow">Architecture &middot; explained</div>
- <h1>Fifty million rows, one copy, and nothing taken on trust</h1>
+ <h1>Fifty million rows, no import, and nothing taken on trust</h1>
  <p class="lede">Mirror the source instead of exporting it, transform where the data already sits, write once, and serve it without importing a second copy. Every figure below was measured on the running system and is re-measured by an acceptance pass that fails loudly; the source is <a href="https://github.com/sulaiman013/fabric-x-duckdb">github.com/sulaiman013/fabric-x-duckdb</a>.</p>
 
  <div class="verdict">
@@ -436,10 +436,10 @@ code{font-family:var(--mono);font-size:.92em;background:var(--plate);border:1px 
  <li><b>Seed then stream.</b> A 10.5 GB snapshot establishes the baseline; a logical replication slot keeps it live. Neither half is sufficient alone, and the order they are created in matters more than it looks.</li>
  <li><b>One node, because the job fits on one.</b> 10.5 GB compressed does not need a cluster. DuckDB on a Fabric Python notebook at 8 vCores bills 4 CU against the Spark starter pool's documented 8, with no shuffle and no cluster start.</li>
  <li><b>Spark only where DuckDB cannot go.</b> V-Order is what makes Direct Lake fast and DuckDB cannot write it, so the split falls exactly on that boundary and costs 233 seconds.</li>
- <li><b>Serve without a second copy.</b> Direct Lake reads the same Delta files the notebook wrote. Nothing is imported, nothing refreshes on a schedule, and a Warehouse path's extra copy of 49.4M rows is never made.</li>
+ <li><b>Serve without importing.</b> Direct Lake reads the same Delta files the notebook wrote. Nothing is imported and nothing refreshes on a schedule, so the model never holds a third copy of the 49.4M rows and never goes stale between refreshes.</li>
  <li><b>The report is a program.</b> Each page is one HTML Content visual fed by a DAX measure that ships both a pre-aggregated cube and its own renderer, with no CDN and no external dependency.</li>
  <li><b>One surrogate key does three jobs.</b> <code>_mirror_row_id</code> is what makes PostgreSQL emit updates and deletes, what makes 593,209 exact duplicates resolvable when no business column is unique, and what gives the fact table a grain that points at one real source row.</li>
- <li><b>Evidence, not assertion.</b> The pipeline writes its own measurements; 39 acceptance checks read them back, chase a live change from PostgreSQL into OneLake by value, and verify that this document still matches the repository.</li>
+ <li><b>Evidence, not assertion.</b> The pipeline writes its own measurements; 36 acceptance checks read them back, chase a live change from PostgreSQL into OneLake by value, and verify that this document still matches the repository.</li>
  </ul>
  </div>
 
@@ -450,14 +450,14 @@ code{font-family:var(--mono);font-size:.92em;background:var(--plate);border:1px 
  <div class="step"><div class="n">3</div><div><b>Create the replication slot, then take the snapshot</b>In that order. This project did the reverse and paid for it: one row deleted and one inserted fell into the gap, and because the errors had opposite signs the row counts still matched exactly. Finding them needed a distinct-key comparison and a per-bucket hash histogram.</div></div>
  <div class="step"><div class="n">4</div><div><b>Seed the mirror</b>16 zstd parquet files, 10.5 GB, 29 minutes, pushed into the landing zone with azcopy. Metadata is written after the data it describes, or the engine latches on a zero-byte file.</div></div>
  <div class="step"><div class="n">5</div><div><b>Stream the write-ahead log</b>A <code>test_decoding</code> slot is polled every ten seconds. Each change becomes a parquet row carrying <code>__rowMarker__</code>, written as the next 20-digit sequential file; the engine applies it as a Delta merge on the key column. Measured: 151 seconds from an UPDATE in PostgreSQL to the engine's own counter moving.</div></div>
- <div class="step"><div class="n">6</div><div><b>Shortcut the mirror into a lakehouse</b><code>Tables/raw_txn</code> points at the mirrored table, so the transformation reads it in place with <code>delta_scan</code>. This is what keeps the pipeline to one copy.</div></div>
+ <div class="step"><div class="n">6</div><div><b>Shortcut the mirror into a lakehouse</b><code>Tables/raw_txn</code> points at the mirrored table, so the transformation reads it in place with <code>delta_scan</code>. This is what stops the transformation staging a copy before it starts.</div></div>
  <div class="step"><div class="n">7</div><div><b>Transform on the capacity, in DuckDB</b>Clean and conform 100 text columns, score seven measured rules, resolve 593,209 duplicates, build the star. 770 seconds of work inside an 895 second billed session, on the Python kernel at 8 vCores. The notebook records its own environment, so <code>spark_in_globals: false</code> is the evidence it was not a Spark driver.</div></div>
  <div class="step"><div class="n">8</div><div><b>Pin everything that could drift</b>Timestamps are parsed as naive UTC and the session timezone is pinned, because <code>to_timestamp</code> returns TIMESTAMPTZ and made every derived hour depend on where the code ran. Window tiebreaks order by the surrogate key so they agree with deduplication. Exports cast to instants, because Spark reads a naive column as TIMESTAMP_NTZ and Direct Lake will not serve it.</div></div>
  <div class="step"><div class="n">9</div><div><b>Write V-Ordered Delta with Spark</b>233 seconds, nine tables, 36 files, 2.5 GB. The only Spark in the pipeline, and the only job DuckDB cannot do.</div></div>
  <div class="step"><div class="n">10</div><div><b>Verify on the capacity, not on a laptop</b>Row counts, V-Order table properties and orphan keys are read from the tables themselves and written to <code>verify.json</code>. Zero orphan dimension keys across 49,406,792 fact rows.</div></div>
  <div class="step"><div class="n">11</div><div><b>Serve with Direct Lake</b>9 tables, 8 relationships, 17 measures, authored as TMDL and imported. The first query after a reframe transcodes columns into memory and costs 7 to 11 seconds; every query after that answers in about a second over the full fact.</div></div>
  <div class="step"><div class="n">12</div><div><b>Report in DAX and JavaScript</b>Four pages, each a single HTML Content visual driven by a measure that ships a 2,508-cell cube and its own renderer inline, using about 4% of the roughly 2.1M character ceiling a measure can hold. Generated, including a native page navigator so it works outside Desktop.</div></div>
- <div class="step"><div class="n">13</div><div><b>Prove all of it, repeatably</b>39 acceptance checks across the repository, ingestion, transformation, the model, the application and the documentation. It checks by value: a real UPDATE chased into OneLake, the build compared rule by rule against a baseline, a decision written and read back out of Delta, and this document's own claims checked against the repository.</div></div>
+ <div class="step"><div class="n">13</div><div><b>Prove all of it, repeatably</b>37 acceptance checks across the repository, ingestion, transformation, the model, the report and the documentation: 36 pass, none fail, one is skipped by a flag. It checks by value: a real UPDATE chased into OneLake, the build compared rule by rule against a baseline, a decision written and read back out of Delta, and this document's own claims checked against the repository.</div></div>
  </div>
 
  <h2>What each decision buys, and what enforces it</h2>
@@ -481,7 +481,7 @@ code{font-family:var(--mono);font-size:.92em;background:var(--plate);border:1px 
  <h3>Why not Spark for the transformation?</h3>
  <p>Because the job fits on one node and a distributed engine charges twice the rate to shuffle data that never needed moving. Measured: 0.994 CU-hours on the Python kernel against 1.989 modelled for the same wall time on the starter pool. The model is deliberately generous, assuming Spark matches DuckDB's wall time when in practice it is usually slower on a job this size. Above a single node's memory, that argument reverses and Spark wins.</p>
  <h3>Why not a Warehouse?</h3>
- <p>A T-SQL path would copy all 49.4M rows into warehouse storage before it could serve them. Direct Lake over the lakehouse reads what the notebook already wrote, so the pipeline holds one copy. That second copy is not priced in the comparison at all, which makes the real gap wider than the one quoted.</p>
+ <p>A gold layer has to be materialised either way: this route writes Delta into the lakehouse, a T-SQL route writes it into warehouse storage. Both persist. The copy this design actually avoids is the <b>Import</b> copy, because Direct Lake reads the files the notebook wrote and a refresh copies metadata rather than data. The honest trade runs the other way on V-Order, which warehouses enable by default and which cost this pipeline a separate Spark step, 233 s and about nine cents.</p>
  </div>
  <div>
  <h3>Why is the report written in JavaScript?</h3>
@@ -495,7 +495,7 @@ code{font-family:var(--mono);font-size:.92em;background:var(--plate);border:1px 
  <div class="nums">
  <div class="card"><div class="kpi-label">Source</div><div class="kpi-value">50.0M</div><div class="kpi-sub">rows, 100 TEXT columns</div></div>
  <div class="card"><div class="kpi-label">Seed</div><div class="kpi-value">10.5 GB</div><div class="kpi-sub">16 parquet, 29 min</div></div>
- <div class="card"><div class="kpi-label">Gold</div><div class="kpi-value good">49.4M</div><div class="kpi-sub">rows, one copy</div></div>
+ <div class="card"><div class="kpi-label">Gold</div><div class="kpi-value good">49.4M</div><div class="kpi-sub">rows, no import</div></div>
  <div class="card"><div class="kpi-label">Duplicates</div><div class="kpi-value">593,209</div><div class="kpi-sub">resolved in the fact</div></div>
  <div class="card"><div class="kpi-label">Rule firings</div><div class="kpi-value">65.2M</div><div class="kpi-sub">seven rules</div></div>
  <div class="card"><div class="kpi-label">Alerts</div><div class="kpi-value">1.42M</div><div class="kpi-sub">2.88% of transactions</div></div>
@@ -507,7 +507,7 @@ code{font-family:var(--mono);font-size:.92em;background:var(--plate);border:1px 
  <div class="card"><div class="kpi-label">Cold query</div><div class="kpi-value">7 to 11 s</div><div class="kpi-sub">transcoding, once</div></div>
  <div class="card"><div class="kpi-label">Orphan keys</div><div class="kpi-value good">0</div><div class="kpi-sub">every dimension</div></div>
  <div class="card"><div class="kpi-label">Seed to Delta</div><div class="kpi-value">151 s</div><div class="kpi-sub">change to applied</div></div>
- <div class="card"><div class="kpi-label">Acceptance</div><div class="kpi-value good">39 / 39</div><div class="kpi-sub">0 failed</div></div>
+ <div class="card"><div class="kpi-label">Acceptance</div><div class="kpi-value good">36 / 36</div><div class="kpi-sub">0 failed, 1 skipped</div></div>
  <div class="card"><div class="kpi-label">Determinism</div><div class="kpi-value good">3 runs</div><div class="kpi-sub">identical, rule by rule</div></div>
  </div>
  <div class="bfoot">fabric-x-duckdb &middot; Architecture, explained &middot; 19 September 2026 &middot; Esc returns to the diagram</div>
@@ -561,7 +561,7 @@ function glyph(k){return '<svg class="ico gl" viewBox="0 0 24 24" aria-hidden="t
    every pass. Nothing on this page is an estimate except where it says modelled. */
 VIEWS.pipeline={
  label:"Pipeline",
- eyebrow:"Architecture &middot; 50M rows, one copy, about a second a query",
+ eyebrow:"Architecture &middot; 50M rows, no import, about a second a query",
  h1:"How 50 million rows reach a report",
  context:"Open mirroring carries an on-premises PostgreSQL table into OneLake and keeps it live from the write-ahead log. DuckDB transforms it on a Fabric Python notebook, Spark writes V-Ordered Delta, and Direct Lake serves it with no copy. Click any component.",
  foot:"fabric-x-duckdb &middot; pipeline architecture &middot; figures measured on the running system, UAT 19 September 2026",
@@ -569,7 +569,7 @@ VIEWS.pipeline={
   {id:"platPg",x:48,y:226,w:648,h:560,ic:"postgres",lab:"<b>PostgreSQL 16</b> &middot; localhost &middot; on-premises",
    foot:'<b style="color:var(--ink)">1 table &middot; 100 columns, every one TEXT</b> &middot; loaded LOGGED, because logical replication never sees an UNLOGGED table'},
   {id:"platFab",x:722,y:226,w:1030,h:560,ic:"fabric",lab:"<b>Microsoft Fabric</b> &middot; trial capacity &middot; UK South",
-   foot:"One copy of the data. The notebook writes Delta, the model reads the same files, and nothing is imported or refreshed on a schedule",footX:360}],
+   foot:"No import copy. The notebook writes Delta, the model reads those same files, and nothing is refreshed on a schedule",footX:360}],
  nodes:{
   raw:{x:232,y:300,w:236,h:150,ic:"postgres",t:"landing.raw_txn",s:"50,000,001 rows &middot; 48 GB",
    title:"landing.raw_txn",where:"PostgreSQL &middot; one wide landing table &middot; bigdata tablespace on D:",
@@ -599,7 +599,7 @@ VIEWS.pipeline={
    title:"fincrime",where:"Fabric Lakehouse &middot; a shortcut to the mirror, plus the gold layer",
    blurb:"A shortcut at <code>Tables/raw_txn</code> points at the mirrored table, so the notebook reads the mirror without copying it. The gold parquet, the Delta tables and every evidence file live here too.",
    kv:[["shortcut","Tables/raw_txn"],["gold Delta tables",9],["gold size","2.5 GB"],["evidence files",3]],
-   pts:["The shortcut is what keeps the pipeline to one copy: DuckDB reads the mirror in place with <code>delta_scan</code>.",
+   pts:["The shortcut is what stops the transformation staging a copy before it starts: DuckDB reads the mirror in place with <code>delta_scan</code>.",
     "<code>build_gold.json</code>, <code>verify.json</code> and <code>readme_last_run.txt</code> are written by the pipeline itself and read back by the UAT."]},
   nb:{x:1172,y:290,w:200,h:160,ic:"notebook",t:"01_build_gold",s:"DuckDB &middot; 8 vCores",
    title:"01_build_gold",where:"Fabric Python notebook &middot; not Spark &middot; DuckDB 1.2.2",
@@ -617,7 +617,7 @@ VIEWS.pipeline={
     "Gold timestamps must be exported as instants. A naive column reads as <code>TIMESTAMP_NTZ</code> in Spark, which the Delta tables and Direct Lake do not accept, and it broke this write once."]},
   sm:{x:1418,y:300,w:150,h:150,ic:"semantic",t:"Direct Lake",s:"fincrime_model",
    title:"fincrime_model",where:"Direct Lake semantic model &middot; 9 tables, 8 relationships, 17 measures",
-   blurb:"Reads the same Delta files the notebook wrote. No import, no scheduled refresh, only framing. One copy of the data serves the whole application.",
+   blurb:"Reads the same Delta files the notebook wrote. No import, no scheduled refresh, only framing, which copies metadata rather than data.",
    kv:[["tables",9],["relationships",8],["measures",17],["first query after reframe","7 to 11 s"],["warm","about 1 s"]],
    pts:["The first query pays for transcoding the fact's columns into memory; every query after that answers in about a second over 49,406,792 rows.",
     "The UAT reconciles the model against the gold layer on every run: Transactions and Rule Firings must equal the verified Delta counts exactly."]},
@@ -660,11 +660,11 @@ VIEWS.pipeline={
    kv:[["commit type","Merge"],["counter","processedRows"],["measured","151 s from UPDATE to counter"]],
    pts:["<b>processedRows</b> is the cheap way to wait for a change to be consumed; the UAT polls it and then reads the row back by value."]}]},
  kpis:[
-  {k:"krows",v:"49.4M",l:"rows served",s:"one copy, no import",g:1,
+  {k:"krows",v:"49.4M",l:"rows served",s:"no import, no refresh",g:1,
    title:"49,406,792 transactions, held once",where:"gold fact_transaction &middot; Direct Lake",
-   blurb:"50,000,001 source rows less 593,209 exact duplicates. The Delta files the notebook wrote are the same files the semantic model reads: nothing is imported, and there is no second copy to keep in sync.",
+   blurb:"50,000,001 source rows less 593,209 exact duplicates. The Delta files the notebook wrote are the same files the semantic model reads: nothing is imported, so there is no third copy to keep in sync.",
    kv:[["source rows","50,000,001"],["duplicates removed","593,209"],["gold rows","49,406,792"],["rule firings","65,175,479"],["alerts","1,423,088"]],
-   pts:["A Warehouse path would need all 49.4M rows copied into warehouse storage first. That copy is never made here, and it is not priced in the comparison either."]},
+   pts:["A gold layer is materialised either way, into this lakehouse or into warehouse storage. What Direct Lake removes is the Import copy, not a warehouse one."]},
   {k:"kbuild",v:"12.8 min",l:"full rebuild",s:"DuckDB on 8 vCores",
    title:"The whole transformation in 12.8 minutes",where:"01_build_gold &middot; measured, run 4",
    blurb:"Count the source, build the star, write nine parquet files. One node, no shuffle, no cluster to start.",
@@ -681,10 +681,10 @@ VIEWS.pipeline={
    blurb:"The first query after a reframe transcodes the fact's columns into memory and costs 7 to 11 seconds. Every query after that is about a second.",
    kv:[["headline KPIs","0.98 s warm"],["overview cube, 2,508 cells","1.22 s"],["rules by band","1.12 s"],["cold, first query","7 to 11 s"]],
    pts:["Nothing was copied into a warehouse to make this true. Direct Lake reads the V-Ordered Delta files in place."]},
-  {k:"kuat",v:"39 / 39",l:"acceptance checks",s:"0 failed",g:1,
-   title:"39 passed, 0 failed, 1 skipped",where:"scripts/uat.py &middot; 19 September 2026",
+  {k:"kuat",v:"36 / 36",l:"acceptance checks",s:"0 failed, 1 skipped",g:1,
+   title:"36 passed, 0 failed, 1 skipped, of 37",where:"scripts/uat.py &middot; 19 September 2026",
    blurb:"A repeatable pass over the whole pipeline, not a checklist. It checks by value: a real UPDATE pushed through the WAL and chased into OneLake, the build compared rule by rule against a baseline, and a decision written and read back out of Delta.",
-   kv:[["repository",5],["ingestion",8],["transformation",11],["semantic model",4],["application",8],["documentation",4]],
+   kv:[["repository",5],["ingestion",10],["transformation",9],["semantic model",4],["report",5],["documentation",4]],
    pts:["The skip is the four-minute full scan of PostgreSQL, opted out of with a flag.",
     "It also checks the README: the layout must match the repository file for file, and the numbers it quotes must be the ones the pipeline produces."]}],
  edges:[

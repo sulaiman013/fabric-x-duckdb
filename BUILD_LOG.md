@@ -1727,6 +1727,11 @@ real one and buys nothing.
 full scan of PostgreSQL's 50M rows, opted out of with `--skip-source-scan` and
 run in full earlier in the same pass.
 
+> That 39 is this run and is left as written. The count later became **36 of 37**
+> when the write-back checks were removed with the write-back plan, and section
+> 39 covers how long it took to notice that three other documents were still
+> quoting the old number.
+
 | Phase | Evidence from the run |
 | --- | --- |
 | Repository | no secrets, ignore rules hold, 23 scripts and 7 notebooks parse, CDC parser tests pass |
@@ -1776,3 +1781,95 @@ The general lesson, which applies to every Git-integrated Fabric workspace:
 its principals, a lakehouse exports its shortcut definitions, and a mirrored
 database exports its `mirroring.json`. None of that is secret by intent, and
 all of it is identifying.
+
+---
+
+## 39. Fact-checking the film, and the four claims that did not survive it
+
+Building a film about the pipeline meant restating every claim the pipeline
+makes, out loud, to someone who has no reason to be generous. Four of them did
+not survive, and two of the four were load-bearing.
+
+### The acceptance figure was stale in three places
+
+`UAT.json` records **36 passed, 0 failed, 1 skipped**, of 37 checks. The
+rendered film said `39 / 39`. So did the architecture diagram's KPI strip, its
+back face, and two sentences of its prose. The count dropped when the
+write-back checks were removed in section 38 and nothing regenerated the things
+that quote it.
+
+The diagram's per-phase breakdown was wrong independently: it summed to 40 and
+put 8 checks in the application phase, where there are 5. The real shape is
+repository 5, ingestion 10, transformation 9, semantic model 4, report 5,
+documentation 4.
+
+### "One copy of the data" was false
+
+Section 32 and the README both argued that this pipeline holds one copy of the
+data and a T-SQL Warehouse route holds two. That is wrong, and it is wrong in
+the direction that flatters this design.
+
+A gold layer is materialised either way. This route persists the mirror's raw
+Delta and the lakehouse gold Delta. A Warehouse route persists the mirror's raw
+Delta and a gold layer in warehouse storage. Two sets of files in both cases.
+
+What this design actually removes is the **Import** copy: an Import-mode model
+would hold a third copy inside the model, rebuild it on a schedule, pay CU on
+every refresh whether anything changed or not, and be stale in between. Direct
+Lake reads the files the notebook wrote and a refresh copies only metadata
+(Microsoft Learn, *Direct Lake overview*). That is a real argument. It is just
+a Direct Lake argument rather than a DuckDB one, and it is worth one copy, not
+two.
+
+### "Half the CU rate" is only true against the default starter pool
+
+Microsoft Learn's *Choosing a notebook kernel* lists three rates, not two:
+
+| Compute | CU while running |
+| --- | --- |
+| Python notebook, 8 vCores | 4 |
+| Spark starter pool, default, after proactive scale-up | 8 minimum |
+| Spark single node at 8 vCores, **if configured** | 4 |
+
+A single-node Spark session bills exactly what the Python kernel bills. The
+comparison in section 37 is still fair, because the starter pool is what you
+get when you do not think about it, but it has to say so. The README's rate
+table already carried the third row; the prose around it did not.
+
+### The benchmark band lands on this dataset
+
+Microsoft's guidance puts roughly **10 to 13 GB compressed** as the range where
+Fabric Spark with the Native Execution Engine becomes competitive with or
+faster than most single-machine engines, and where single-machine Python
+engines can hit out-of-memory errors at lower vCore counts.
+
+This dataset is **10.5 GB compressed**. Saying "it fits on one node" without
+saying that is more confident than the evidence supports. It fits because the
+node carried 67.4 GB of RAM and DuckDB was capped at 47 GB, which is a
+precondition rather than a victory.
+
+### And one that runs the other way
+
+Worth writing down because it is the opposite of a flattering finding.
+**V-Order is enabled by default on every Fabric warehouse** and disabled by
+default for Spark and lakehouses in new workspaces. A Warehouse route gets the
+Direct Lake read optimisation free. This pipeline had to add `02_vorder_write`,
+233 seconds and about nine cents, to match it, and skipping it was never an
+option because Direct Lake cold queries are 40 to 60% faster with V-Order.
+
+Warehouse compute also autoscales, so it cannot be pinned to a rate at all.
+That makes the alternative unpredictable rather than expensive, which is a
+weaker claim than the one section 37 was making and a truer one.
+
+### What it cost to find, and what now prevents it
+
+The film's gate, `video/scripts/verify_film.py`, now runs 110 checks before any
+render: every figure on screen is compared against `UAT.json` or `BUILD_LOG.md`,
+retracted claims are banned by pattern, and the architecture diagram's own text
+is scanned too, because scene 5 plays it.
+
+Two rounds of correction still left stale claims in the diagram's back face,
+in different words each time, and only watching the rendered film caught them.
+Exact-string replacement finds what you remember. A scan finds what you forgot.
+That is the whole lesson: **a claim that is repeated in four documents is four
+claims, and correcting one of them is not correcting it.**
