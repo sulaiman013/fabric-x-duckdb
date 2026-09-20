@@ -62,19 +62,11 @@ fabric_ws/**/*.SQLDatabase/Security/
 architecture-diagram/template.html
 
 # ---------------------------------------------------------------------------
-# The film. The source is the work and is tracked. These are not:
-#   node_modules  ~300 MB of dependencies
-#   .capture      Playwright's raw webm, deleted by capture_arch.py anyway
-#   out/stills    frame-by-frame renders used to review layout before a render
-# out/           every render. the master is 62 MB and a git history is the
-#                wrong place for it. video/poster/ carries the poster frame,
-#                which is what the README needs.
-# public/arch.mp4 IS tracked: it is an input to the build, not an output.
+# The film. video/ is a Remotion project that lives in this working tree but
+# is not part of this repository. It carries ~300 MB of node_modules and
+# renders up to 62 MB, and a git history is the wrong place for either.
 # ---------------------------------------------------------------------------
-video/node_modules/
-video/.capture/
-video/out/stills/
-video/out/*.txt
+video/
 
 # ---------------------------------------------------------------------------
 # NOT MINE. "ARCHITECTURE DIAGRAM ANON/" is client material that happens to sit
