@@ -81,7 +81,6 @@ _SP_CU, _SP_WALL = 8, 233                     # V-Order write, Spark starter poo
 _PRICE_UKS, _PRICE_USE = 0.21, 0.18
 _PILOT_WH_CU_PER_S = 60                       # Warehouse CU-s per engine-second, pilot
 _route_cus = _PY_CU * _EXEC_S + _SP_CU * _SP_WALL
-_diagram_cus = _PY_CU * _PY_WALL + _SP_CU * _SP_WALL   # the old basis: wall time
 F.update({
     "price_uks": "%.2f" % _PRICE_UKS,
     "price_use": "%.2f" % _PRICE_USE,
@@ -90,8 +89,6 @@ F.update({
     "vorder_wall_s": "%d" % _SP_WALL,
     "route_cuh": "%.3f" % (_route_cus / 3600),
     "route_usd": "%.2f" % (_route_cus / 3600 * _PRICE_UKS),
-    "diagram_cuh": "%.2f" % (_diagram_cus / 3600),
-    "diagram_usd": "%.2f" % (_diagram_cus / 3600 * _PRICE_USE),
     "vorder_cents": "%d" % round(_SP_CU * _SP_WALL / 3600 * _PRICE_UKS * 100),
     "vorder_share": "%d" % round(100.0 * _SP_CU * _SP_WALL / _route_cus),
     "wh_engine_s": "%d" % round(_route_cus / _PILOT_WH_CU_PER_S),
@@ -204,8 +201,10 @@ self-contained, so it opens from disk with no server and no network.
 ![The transformation view: read, conform, score, deduplicate, build the star](https://raw.githubusercontent.com/sulaiman013/fabric-x-duckdb/master/architecture-diagram/shot-transform.png)
 
 Every figure on those pages was measured on the running system and is
-re-measured by `scripts/uat.py` on every acceptance pass. The only two things
-marked **modelled** are the Spark cost comparison and the price per CU-hour.
+re-measured by `scripts/uat.py` on every acceptance pass. The only thing marked
+**modelled** is the Spark cost comparison. The price per CU-hour is quoted for
+this capacity's region, and the Warehouse comparison comes from a separate
+production pilot.
 
 The page is generated from `parts/` by `assemble.py` and gated by `verify.py`,
 which drives both views in a real browser and asserts that nothing overlaps,
@@ -805,9 +804,8 @@ records only a wall time, so its figure is an upper bound.
 
 The reference run executed for %(exec_s)s s on 8 vCores, then V-Ordered the result
 in at most %(vorder_wall_s)s s on a starter pool: **at most %(route_cuh)s
-CU-hours, $%(route_usd)s**, at the UK South rate. The architecture diagram above
-shows %(diagram_cuh)s CU-hours and $%(diagram_usd)s because it prices wall time,
-startup included, at the East US rate. Both are corrected here.
+CU-hours, $%(route_usd)s**, at the UK South rate, the same figures the
+architecture diagram above shows.
 `PRICE_PER_CU_HOUR` in the cell is the UK South rate; change it for your region.
 
 ### Against Spark, and what is honest about it

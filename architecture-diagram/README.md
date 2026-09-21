@@ -25,8 +25,10 @@ enforces each one, the arguments worth having, and the numbers.
 
 ## Every figure is measured
 
-Nothing on the page is an estimate except the two things that say **modelled**:
-the Spark cost comparison, and the price per CU-hour. Everything else was
+Nothing on the page is an estimate except the Spark cost comparison, which says
+**modelled**. The price per CU-hour is quoted for this capacity's region, $0.21
+in UK South (Azure retail prices API, 21 September 2026), and the Warehouse
+figures come from a separate production pilot, anonymised. Everything else was
 observed on the running system and is recorded in
 [`../BUILD_LOG.md`](../BUILD_LOG.md), then re-measured by
 [`../scripts/uat.py`](../scripts/uat.py) on every acceptance pass.
@@ -35,9 +37,9 @@ observed on the running system and is recorded in
 | --- | --- |
 | Source | 50,000,001 rows, 100 TEXT columns, 48 GB as loaded |
 | Gold | 49,406,792 rows after 593,209 duplicates resolved |
-| Rebuild | 770 s of DuckDB work inside an 895 s billed session, 8 vCores |
+| Rebuild | 770 s of DuckDB work inside an 895 s session, 8 vCores; the 770 s is what is billed |
 | V-Order | 233 s, the only Spark in the pipeline |
-| Compute | 1.512 CU-hours, about $0.27, against 2.507 modelled for Spark |
+| Compute | at most 1.374 CU-hours, at most $0.29 in UK South, against 2.230 modelled for Spark |
 | Query | about a second warm, 7 to 11 s for the first after a reframe |
 
 ## Files

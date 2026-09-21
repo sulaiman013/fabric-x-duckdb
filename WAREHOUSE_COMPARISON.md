@@ -255,7 +255,9 @@ load, not a cluster.
 3. **$0.27 per rebuild**, in the README, the architecture diagram, the film and
    its thumbnail. It priced wall time at the East US rate. Corrected for both,
    this capacity's figure is **at most $0.29**. The two errors pull in opposite
-   directions and nearly cancel, which is luck, not accuracy.
+   directions and nearly cancel, which is luck, not accuracy. Corrected since in
+   the README, the architecture diagram, and the website's blog post and case
+   study. The film and its thumbnail still show $0.27.
 4. **"Why this is cheaper than doing it in T-SQL"**, the heading of README
    section 6. It was only ever modelled against Spark. It is now supported, but
    by the pilot's measurements rather than this repository's.

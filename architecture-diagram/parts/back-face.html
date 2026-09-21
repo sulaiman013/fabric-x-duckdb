@@ -57,9 +57,9 @@
  <div class="two">
  <div>
  <h3>Why not Spark for the transformation?</h3>
- <p>Because the job fits on one node and a distributed engine charges twice the rate to shuffle data that never needed moving. Measured: 0.994 CU-hours on the Python kernel against 1.989 modelled for the same wall time on the starter pool. The model is deliberately generous, assuming Spark matches DuckDB's wall time when in practice it is usually slower on a job this size. Above a single node's memory, that argument reverses and Spark wins.</p>
+ <p>Because the job fits on one node and a distributed engine charges twice the rate to shuffle data that never needed moving. Measured: 0.856 CU-hours on the Python kernel against 1.712 modelled for the same executing time on the starter pool. The model is deliberately generous, assuming Spark matches DuckDB's wall time when in practice it is usually slower on a job this size. Above a single node's memory, that argument reverses and Spark wins.</p>
  <h3>Why not a Warehouse?</h3>
- <p>A gold layer has to be materialised either way: this route writes Delta into the lakehouse, a T-SQL route writes it into warehouse storage. Both persist. The copy this design actually avoids is the <b>Import</b> copy, because Direct Lake reads the files the notebook wrote and a refresh copies metadata rather than data. The honest trade runs the other way on V-Order, which warehouses enable by default and which cost this pipeline a separate Spark step, 233 s and about nine cents.</p>
+ <p>Not because of the rate: since August 2026 a Warehouse vCore costs 0.538 CU, close to a notebook's 0.5. Because of what gets billed. The notebook bills the 8 vCores it was given, only while it executes; a Warehouse bills every vNode it allocates, busy or waiting, and background work while it exists. A production pilot, anonymised, measured about 60 CU-s per Warehouse engine-second against 4, and about 9,800 CU-s against 260 to rebuild the same three tables. The honest trade runs the other way on raw speed and on V-Order, which warehouses write by default and which cost this pipeline a separate Spark step, at most 233 s and about eleven cents.</p>
  </div>
  <div>
  <h3>Why is the report written in JavaScript?</h3>
@@ -79,8 +79,8 @@
  <div class="card"><div class="kpi-label">Alerts</div><div class="kpi-value">1.42M</div><div class="kpi-sub">2.88% of transactions</div></div>
  <div class="card"><div class="kpi-label">Rebuild</div><div class="kpi-value">12.8 min</div><div class="kpi-sub">DuckDB, 8 vCores</div></div>
  <div class="card"><div class="kpi-label">V-Order</div><div class="kpi-value">233 s</div><div class="kpi-sub">the only Spark</div></div>
- <div class="card"><div class="kpi-label">Compute</div><div class="kpi-value good">1.51</div><div class="kpi-sub">CU-hours, about $0.27</div></div>
- <div class="card"><div class="kpi-label">Modelled Spark</div><div class="kpi-value">2.51</div><div class="kpi-sub">CU-hours, same work</div></div>
+ <div class="card"><div class="kpi-label">Compute</div><div class="kpi-value good">1.37</div><div class="kpi-sub">CU-hours at most, $0.29</div></div>
+ <div class="card"><div class="kpi-label">Modelled Spark</div><div class="kpi-value">2.23</div><div class="kpi-sub">CU-hours, same work</div></div>
  <div class="card"><div class="kpi-label">Warm query</div><div class="kpi-value good">~1 s</div><div class="kpi-sub">over 49.4M rows</div></div>
  <div class="card"><div class="kpi-label">Cold query</div><div class="kpi-value">7 to 11 s</div><div class="kpi-sub">transcoding, once</div></div>
  <div class="card"><div class="kpi-label">Orphan keys</div><div class="kpi-value good">0</div><div class="kpi-sub">every dimension</div></div>

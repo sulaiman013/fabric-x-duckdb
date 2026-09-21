@@ -55,8 +55,10 @@ self-contained, so it opens from disk with no server and no network.
 ![The transformation view: read, conform, score, deduplicate, build the star](https://raw.githubusercontent.com/sulaiman013/fabric-x-duckdb/master/architecture-diagram/shot-transform.png)
 
 Every figure on those pages was measured on the running system and is
-re-measured by `scripts/uat.py` on every acceptance pass. The only two things
-marked **modelled** are the Spark cost comparison and the price per CU-hour.
+re-measured by `scripts/uat.py` on every acceptance pass. The only thing marked
+**modelled** is the Spark cost comparison. The price per CU-hour is quoted for
+this capacity's region, and the Warehouse comparison comes from a separate
+production pilot.
 
 The page is generated from `parts/` by `assemble.py` and gated by `verify.py`,
 which drives both views in a real browser and asserts that nothing overlaps,
@@ -500,9 +502,8 @@ records only a wall time, so its figure is an upper bound.
 
 The reference run executed for 770.6 s on 8 vCores, then V-Ordered the result
 in at most 233 s on a starter pool: **at most 1.374
-CU-hours, $0.29**, at the UK South rate. The architecture diagram above
-shows 1.51 CU-hours and $0.27 because it prices wall time,
-startup included, at the East US rate. Both are corrected here.
+CU-hours, $0.29**, at the UK South rate, the same figures the
+architecture diagram above shows.
 `PRICE_PER_CU_HOUR` in the cell is the UK South rate; change it for your region.
 
 ### Against Spark, and what is honest about it
