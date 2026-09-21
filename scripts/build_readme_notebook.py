@@ -70,6 +70,33 @@ F = {
     "posting_after": "93.0%",
 }
 
+# Cost facts. A notebook is billed while it executes, not for its session start
+# (Microsoft Learn, Apache Spark billing and utilization), so the transform is
+# priced on its own executing time, from UAT.json. The V-Order job records only
+# a wall time (BUILD_LOG section 37), so its figure is an upper bound. Prices
+# are the Azure retail prices API, queried 21 September 2026: every Fabric meter
+# costs the same per CU-hour within a region, and this capacity is in UK South.
+_PY_CU, _EXEC_S, _PY_WALL = 4, 770.6, 895     # DuckDB, Python kernel, 8 vCores
+_SP_CU, _SP_WALL = 8, 233                     # V-Order write, Spark starter pool
+_PRICE_UKS, _PRICE_USE = 0.21, 0.18
+_PILOT_WH_CU_PER_S = 60                       # Warehouse CU-s per engine-second, pilot
+_route_cus = _PY_CU * _EXEC_S + _SP_CU * _SP_WALL
+_diagram_cus = _PY_CU * _PY_WALL + _SP_CU * _SP_WALL   # the old basis: wall time
+F.update({
+    "price_uks": "%.2f" % _PRICE_UKS,
+    "price_use": "%.2f" % _PRICE_USE,
+    "price_date": "21 September 2026",
+    "exec_s": "%.1f" % _EXEC_S,
+    "vorder_wall_s": "%d" % _SP_WALL,
+    "route_cuh": "%.3f" % (_route_cus / 3600),
+    "route_usd": "%.2f" % (_route_cus / 3600 * _PRICE_UKS),
+    "diagram_cuh": "%.2f" % (_diagram_cus / 3600),
+    "diagram_usd": "%.2f" % (_diagram_cus / 3600 * _PRICE_USE),
+    "vorder_cents": "%d" % round(_SP_CU * _SP_WALL / 3600 * _PRICE_UKS * 100),
+    "vorder_share": "%d" % round(100.0 * _SP_CU * _SP_WALL / _route_cus),
+    "wh_engine_s": "%d" % round(_route_cus / _PILOT_WH_CU_PER_S),
+})
+
 
 def md(text):
     lines = text.strip("\n").split("\n")
@@ -747,7 +774,7 @@ interaction. The latency measured above is therefore the whole per-page cost.
     A(md("""
 ---
 
-## 6. What it costs, and why this is cheaper than doing it in T-SQL
+## 6. What it costs, against Spark and against a T-SQL Warehouse
 
 ### The unit of money in Fabric
 
@@ -756,38 +783,44 @@ of CU per hour (an F2 is 2, an F64 is 64, this trial is an FTL64), billed by the
 second while it is running. Workloads draw from that pool. The relevant rates,
 from Microsoft Learn:
 
-| Compute | CU while running | Source |
-| --- | --- | --- |
-| Python notebook, 8 vCores | **4 CU** | *Choosing a notebook kernel*: 1 CU per 2 vCores, default 2 vCores = 1 CU |
-| Spark starter pool (default Spark notebook) | **8 CU** minimum after scale-up | same article |
-| Spark single-node 8 vCore, if configured | 4 CU | same article |
+| Compute | CU | Billed while | Source |
+| --- | --- | --- | --- |
+| Python notebook, 8 vCores | **4 CU** | executing; session start is not billed | *Choosing a notebook kernel*: 1 CU per 2 vCores; *Apache Spark billing and utilization* |
+| Spark starter pool (default Spark notebook) | **8 CU** minimum after scale-up | executing | same articles |
+| Fabric Warehouse | **0.538 CU per vCore**, allocated in vNodes of 4 | a vNode is allocated, busy or waiting, in a one-minute allocation window | *Fabric operations*, *Warehouse consumption and utilization*. It was 2 CU per vCore before August 2026 |
+
+Every Fabric meter costs the same per CU-hour within a region: **$%(price_uks)s**
+in UK South, where this capacity runs, and $%(price_use)s in East US (Azure
+retail prices API, queried %(price_date)s). So the choice of engine never
+changes the price of a CU-hour. It changes how many are used, and what counts
+as used.
 
 ### The build, measured
 
-Capacity bills a notebook for its **session wall time**, startup included, not
-for the seconds its cells were busy. So the cell below prices the wall time of
-each notebook's most recent completed run, read live from the jobs API, and
-prints the build's own in-notebook work time beside it so the startup overhead
-is visible rather than hidden. Change `PRICE_PER_CU_HOUR` to your region's
-pay-as-you-go rate (Azure pricing page: *Microsoft Fabric*; the default below
-is a US list price and is an **assumption**).
+A notebook is billed while its session is active, and not for the time taken to
+start it (Microsoft Learn, *Apache Spark billing and utilization*). So the cell
+below prices the transformation on its own executing time, and prints the last
+run's wall time beside it to show the start that is not billed. The V-Order job
+records only a wall time, so its figure is an upper bound.
 
-### The comparison, and what is honest about it
+The reference run executed for %(exec_s)s s on 8 vCores, then V-Ordered the result
+in at most %(vorder_wall_s)s s on a starter pool: **at most %(route_cuh)s
+CU-hours, $%(route_usd)s**, at the UK South rate. The architecture diagram above
+shows %(diagram_cuh)s CU-hours and $%(diagram_usd)s because it prices wall time,
+startup included, at the East US rate. Both are corrected here.
+`PRICE_PER_CU_HOUR` in the cell is the UK South rate; change it for your region.
 
-The DuckDB run is **measured**. The alternative is **modelled**, and the model
-is conservative in the alternative's favour:
+### Against Spark, and what is honest about it
 
-- A Spark or Warehouse transformation of the same job is assumed to take the
-  **same wall time** as DuckDB. In practice a distributed engine on a job that
+The DuckDB run is **measured**. The Spark alternative is **modelled**, and the
+model is conservative in Spark's favour:
+
+- A Spark transformation of the same job is assumed to take the **same
+  executing time** as DuckDB. In practice a distributed engine on a job that
   fits on one node is usually slower, not faster, because it spends time
   shuffling.
 - It is charged at the **starter pool minimum of 8 CU**, twice the Python
   notebook's 4 CU. That is the documented floor, not a pessimistic guess.
-- Warehouse compute is **not user-sized**. Consumption is active vNodes times
-  active time and it autoscales (Microsoft Learn, *Warehouse consumption and
-  utilization*), so a Warehouse alternative cannot be pinned to a rate at all.
-  The 8 CU above is the Spark floor, which is the closest documented rate that
-  can actually be compared.
 
 What is *not* claimed: that DuckDB beats Spark on every job. Microsoft's own
 guidance puts the crossover at roughly **10 to 13 GB compressed**, where Fabric
@@ -800,15 +833,16 @@ of RAM and DuckDB was capped at 47 GB.
 
     A(code("""
 # MEASURED cost of the pipeline's compute, and a MODELLED alternative.
-PRICE_PER_CU_HOUR = 0.18   # USD, pay-as-you-go, US list price. ASSUMPTION: set yours.
+PRICE_PER_CU_HOUR = %(price_uks)s   # USD per CU-hour, UK South, Azure retail prices API, %(price_date)s. Set yours.
 
 cu_python = 4                       # 8 vCores on the Python kernel (Microsoft Learn)
 cu_spark_starter = 8                # starter pool minimum after scale-up (Microsoft Learn)
 
-# Capacity bills a notebook for its session wall time, startup included, not
-# for the seconds its cells were busy. So the cost below uses the wall time of
-# each notebook's most recent completed run, read live from the jobs API, and
-# prints the in-notebook work time beside it so the overhead is visible.
+# A notebook is billed while its session is active, not for the time taken to
+# start it (Microsoft Learn, Apache Spark billing and utilization). So the
+# transform is priced on its own executing time, and the wall time of its last
+# run, read live from the jobs API, is printed beside it to show the start that
+# is not billed. The V-Order job records only a wall time, an upper bound.
 from datetime import datetime
 
 def _t(s):
@@ -836,20 +870,21 @@ if build_s is None:
 if vorder_s is None:
     vorder_s = %(vorder_s)s         # no completed run listed: BUILD_LOG section 31
 print(f"01_build_gold    last completed run {build_at}: {build_s:.0f} s wall, "
-      f"of which {T['total_s']:.0f} s was DuckDB work")
+      f"of which {T['total_s']:.0f} s was DuckDB work, the part that is billed")
 print(f"02_vorder_write  last completed run {vorder_at}: {vorder_s:.0f} s wall")
 print()
 
 def cost(cu, seconds):
     return cu * seconds / 3600 * PRICE_PER_CU_HOUR
 
+work_s = T["total_s"]               # executing time: what a notebook is billed for
 rows = [
-    ("DuckDB transform, Python 8 vCores", "measured wall, documented CU", cu_python, build_s),
-    ("V-Order write, Spark starter pool",  "measured wall, documented CU", cu_spark_starter, vorder_s),
+    ("DuckDB transform, Python 8 vCores", "executing time, documented CU", cu_python, work_s),
+    ("V-Order write, Spark starter pool",  "wall time, an upper bound",     cu_spark_starter, vorder_s),
 ]
 alt = [
-    ("Same transform on Spark starter pool", "modelled: same wall time, 8 CU", cu_spark_starter, build_s),
-    ("V-Order write, Spark starter pool",    "measured wall, documented CU", cu_spark_starter, vorder_s),
+    ("Same transform on Spark starter pool", "modelled: same executing time, 8 CU", cu_spark_starter, work_s),
+    ("V-Order write, Spark starter pool",    "wall time, an upper bound",          cu_spark_starter, vorder_s),
 ]
 def show(title, rr):
     print(title)
@@ -869,6 +904,16 @@ print(f"transformation step: {(1 - step_a/step_b)*100:.0f}%% less compute "
       f"({step_a:.3f} vs {step_b:.3f} CU-h); whole pipeline: {(1 - a_cuh/b_cuh)*100:.0f}%% less "
       f"({b_cuh - a_cuh:.3f} CU-h, ${b_usd - a_usd:.3f} at ${PRICE_PER_CU_HOUR}/CU-h)")
 print()
+# Against a Warehouse the rate is documented but not what gets billed: it bills
+# every vNode it allocates, busy or waiting. A production pilot, anonymised,
+# measured about 60 CU-s per Warehouse engine-second against this notebook's 4,
+# on one capacity for the same tables. That gives the bar a Warehouse would
+# have to clear on this job.
+PILOT_WH_CU_PER_ENGINE_S = 60
+print(f"At the pilot's ~{PILOT_WH_CU_PER_ENGINE_S} CU-s per Warehouse engine-second, a Warehouse "
+      f"would have to do this whole job in {a_cuh * 3600 / PILOT_WH_CU_PER_ENGINE_S:.0f} "
+      f"engine-seconds to match it. WAREHOUSE_COMPARISON.md has the working.")
+print()
 print("Not priced, either way: a gold layer is materialised in both routes, into the")
 print(f"lakehouse here or into warehouse storage there. Both persist {B['counts']['fact_transaction']:,} rows.")
 print("What Direct Lake removes is the IMPORT copy, which is a serving choice, not this one.")
@@ -880,6 +925,9 @@ print("What Direct Lake removes is the IMPORT copy, which is a serving choice, n
 A gold layer gets materialised either way. This route writes Delta into the
 lakehouse; a T-SQL route writes it into warehouse storage. Both persist and both
 cost storage, so this pipeline is **not** "one copy", and neither is that one.
+This route also keeps the %(gold_parquet_gb)s GB of intermediate parquet that the
+V-Order job reads. A Warehouse route has no such copy: it reads the mirror in
+place through a three-part name and writes V-Ordered Delta directly.
 
 The copy that does not have to exist is the **Import** copy. An Import-mode
 model holds a third copy of the data inside the model, rebuilds it on a
@@ -887,25 +935,63 @@ schedule, pays CU on every refresh whether or not anything changed, and is stale
 in between. Direct Lake reads the files the notebook wrote, and a refresh copies
 **only metadata** (Microsoft Learn, *Direct Lake overview*), which takes seconds.
 
+### Against a T-SQL Warehouse
+
+Warehouse compute was repriced in August 2026, from 2 CU per vCore to 0.538. A
+notebook vCore is 0.5, so per vCore the two are now close, and most published
+comparisons, written before the change, overstate the Warehouse's price about
+3.7 times. The rate does not decide it, though. What gets billed does.
+
+The notebook bills the 8 vCores it was given, and only while it executes. The
+Warehouse bills every vNode the engine chooses to allocate, per second, busy or
+waiting, and background work for as long as the warehouse exists.
+
+A separate production pilot, anonymised here, measured the consequence. It ran
+the same transformations first as T-SQL procedures in a Fabric Warehouse, then
+as DuckDB in a Python notebook, on one F16 capacity, for the same tables, in
+September 2026, after the repricing:
+
+| Measured in the pilot | Warehouse | DuckDB notebook |
+| --- | --- | --- |
+| CU-s per engine-second | about 50 to 65 | 4, at 8 vCores |
+| three fact tables, one five-minute cycle | about 1,260 CU-s | 82 to 123 CU-s |
+| three fact tables, rebuilt from scratch | about 9,800 CU-s | about 260 CU-s |
+| every table every five minutes, one day | about 150%% of the F16, projected | 12.7%% of the F16, measured |
+| a run that did nothing | about 370 CU-s for 6 seconds | nothing between runs |
+| a warehouse that merely exists | about 840 CU-s an hour | nothing |
+
+This repository's job has not itself been run on a Warehouse. At the pilot's
+~60 CU-s per engine-second, a Warehouse would have to do all of it in
+**%(wh_engine_s)s engine-seconds** to match what the DuckDB route billed.
+[WAREHOUSE_COMPARISON.md](https://github.com/sulaiman013/fabric-x-duckdb/blob/master/WAREHOUSE_COMPARISON.md)
+has the full working: capacity share by SKU, what a parked warehouse costs, and what ports from DuckDB to
+T-SQL.
+
 ### Where the Warehouse route wins
 
 Worth writing down, because a comparison that only runs one way is an advert:
 
-1. **V-Order is on by default in every warehouse**, and off by default for Spark
+1. **Raw speed on a large whole-table build.** The pilot measured one at 14 s
+   on the Warehouse against 84 to 90 s in the notebook. Under allocation
+   billing, faster is not cheaper: every vNode that made it fast is billed.
+2. **No memory ceiling.** It scales out. A notebook stops at one node, and the
+   pilot lost a full load on an undersized session before restructuring it.
+3. **V-Order is on by default in every warehouse**, and off by default for Spark
    and lakehouses in new workspaces. This pipeline had to add `02_vorder_write`,
-   233 s and about nine cents, to get what a warehouse gives free. Direct Lake
-   cold-cache queries are 40 to 60% faster with it, so skipping it was never an
-   option.
-2. **Warehouse compute autoscales**, so nobody has to size it. This route makes
-   you pick 8 vCores and live with the choice.
-3. **T-SQL is familiar** to far more teams than DuckDB's dialect is, and that is
+   at most %(vorder_wall_s)s s and about %(vorder_cents)s cents, up to
+   %(vorder_share)s%% of its whole cost, to get what a warehouse gives free.
+   Direct Lake cold-cache queries are 40 to 60%% faster with it, so skipping it
+   was never an option.
+4. **No timezone trap.** `datetime2` carries no time zone, so the laptop against
+   capacity disagreement this build hit on epoch timestamps cannot happen.
+5. **T-SQL is familiar** to far more teams than DuckDB's dialect is, and that is
    a real operational cost this design is choosing to pay.
 
 And the report adds a saving at query time: after the one measure per page,
 every interaction is free. That is measurable on this workspace by watching the
 Capacity Metrics app while clicking through the report, which is the test worth
 running before believing any of this.
-"""))
+""" % F))
 
     # =======================================================================
     A(md("""
